@@ -10,7 +10,7 @@
 # Usage example:
 #   python mod_agr125x_v3_combined.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.0.0"
+__version__ = "1.0.2"
 
 import argparse
 import csv
@@ -105,13 +105,17 @@ def split_list(raw_vals: str):
 
 
 def split_pairs(raw_low: str, raw_high: str):
-    """Pair LOW/HIGH lists; HIGH may be shorter/empty, defaults to ''."""
+    """Pair LOW/HIGH lists; HIGH may be shorter/empty, defaults to ''.
+    If both are empty, return a single empty pair to force replace with blanks."""
     lows = split_list(raw_low)
     highs = split_list(raw_high)
     pairs = []
-    for idx, low_val in enumerate(lows):
-        high_val = highs[idx] if idx < len(highs) else ""
-        pairs.append((low_val, high_val))
+    if not lows and not highs:
+        pairs.append(("", ""))
+    else:
+        for idx, low_val in enumerate(lows):
+            high_val = highs[idx] if idx < len(highs) else ""
+            pairs.append((low_val, high_val))
     # de-dupe by (low, high) preserving order
     seen = set()
     dedup = []
