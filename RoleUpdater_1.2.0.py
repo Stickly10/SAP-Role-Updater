@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# RoleUpdater 1.1.1 — Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
+# RoleUpdater 1.2.0 – Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
@@ -8,9 +8,9 @@
 #   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
 #   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (40 chars each, padded).
 # Usage example:
-#   python RoleUpdater_1.1.1.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
+#   python RoleUpdater_1.2.0.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 import argparse
 import csv
@@ -21,44 +21,60 @@ from error_handler import CodedError, emit_error, raise_error
 
 # ---------------- widths and regex ----------------
 
-WIDTHS_1251 = {
-    "mandt": 3,
-    "role": 30,
-    "seq": 6,
-    "obj": 10,
-    "auth": 12,
-    "sp4": 4,
-    "field": 10,
-    "low": 40,
-    "high": 40,
-}
-
-WIDTHS_1252 = {
+# Prefix shared by all tables
+PREFIX_WIDTHS = {
     "table": 10,
     "sp40": 40,
     "mandt": 3,
     "role": 30,
     "seq": 6,
-    "org_field": 10,
-    "sp30": 30,
-    "org_value": 40,  # LOW width (AGR_1252-Low)
-    "high": 40,       # HIGH width (AGR_1252-High)
 }
 
-# Capture fixed-width segments, preserving the gap after AGR_1251
+# AGR_1251 specifics
+W1251 = {
+    "object": 10,
+    "auth": 12,
+    "variant_pad": 4,  # spaces after AUTH
+    "field": 10,
+    "low": 40,
+    "high": 40,
+    "modified": 1,
+    "deleted": 1,
+    "copied": 1,
+    "neu": 1,
+    "node": 6,
+}
+
+# AGR_1252 specifics
+W1252 = {
+    "varbl": 40,  # $ + field name padded
+    "sp30": 30,
+    "low": 40,
+    "high": 40,
+}
+
+# Regex builders
 RX_1251 = re.compile(
-    r"^(AGR_1251)(\s+)(\d{3})(.{30})(\d{6})(.{10})(.{12})\s{4}(.{10})(.{40})(.{40})(.*)$"
+    rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
+    rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
+    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<object>.{{{W1251['object']}}})(?P<auth>.{{{W1251['auth']}}})"
+    rf"(?P<variant_pad>.{{{W1251['variant_pad']}}})(?P<field>.{{{W1251['field']}}})(?P<low>.{{{W1251['low']}}})"
+    rf"(?P<high>.{{{W1251['high']}}})(?P<modified>.{{{W1251['modified']}}})(?P<deleted>.{{{W1251['deleted']}}})"
+    rf"(?P<copied>.{{{W1251['copied']}}})(?P<neu>.{{{W1251['neu']}}})(?P<node>.{{{W1251['node']}}})(?P<tail>.*)$"
 )
 
-# New 40/40 width (LOW/HIGH) format
 RX_1252 = re.compile(
-    r"^(?P<table>.{10})(?P<sp40>\s{40})(?P<mandt>\d{3})(?P<role>.{30})(?P<seq>\d{6})"
-    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{40})(?P<high>.{40})(?P<tail>.*)$"
+    rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
+    rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
+    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{{W1252['varbl']}}})(?P<sp30>\s{{{W1252['sp30']}}})"
+    rf"(?P<low>.{{{W1252['low']}}})(?P<high>.{{{W1252['high']}}})(?P<tail>.*)$"
 )
-# Legacy format (LOW up to 4 chars, no HIGH)
+# Legacy format (VARBL width 10 + LOW up to 4, no HIGH)
 RX_1252_LEGACY = re.compile(
-    r"^(?P<table>.{10})(?P<sp40>\s{40})(?P<mandt>\d{3})(?P<role>.{30})(?P<seq>\d{6})"
-    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{0,4})(?P<tail>.*)$"
+    rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
+    rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
+    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{10}})(?P<sp30>\s{{{W1252['sp30']}}})"
+    rf"(?P<low>.{{0,4}})(?P<tail>.*)$"
 )
 
 
@@ -160,16 +176,23 @@ def parse_entry_1251(line):
     return {
         "table_type": "AGR_1251",
         "raw": line,
-        "prefix": m.group(1) + m.group(2),
-        "mandt": m.group(3),
-        "role": m.group(4),
-        "seq": m.group(5),
-        "obj": m.group(6),
-        "auth": m.group(7),
-        "field": m.group(8),
-        "low": m.group(9),
-        "high": m.group(10),
-        "tail": m.group(11),
+        "table": m.group("table"),
+        "sp40": m.group("sp40"),
+        "mandt": m.group("mandt"),
+        "role": m.group("role"),
+        "seq": m.group("seq"),
+        "object": m.group("object"),
+        "auth": m.group("auth"),
+        "variant_pad": m.group("variant_pad"),
+        "field": m.group("field"),
+        "low": m.group("low"),
+        "high": m.group("high"),
+        "modified": m.group("modified"),
+        "deleted": m.group("deleted"),
+        "copied": m.group("copied"),
+        "neu": m.group("neu"),
+        "node": m.group("node"),
+        "tail": m.group("tail"),
     }
 
 
@@ -194,9 +217,9 @@ def parse_entry_1252(line):
         "mandt": m.group("mandt"),
         "role": m.group("role"),
         "seq": m.group("seq"),
-        "org_field": m.group("org_field"),
+        "varbl": m.group("varbl"),
         "sp30": m.group("sp30"),
-        "org_value": m.group("org_value"),
+        "low": m.group("low"),
         "high": high_val,
         "tail": m.group("tail"),
     }
@@ -204,35 +227,40 @@ def parse_entry_1252(line):
 
 def compose_line_1251(base, seq, field, low, high):
     parts = [
-        base["prefix"],
-        fmt_fixed(base["mandt"], WIDTHS_1251["mandt"]),
-        fmt_fixed(base["role"], WIDTHS_1251["role"]),
-        fmt_fixed(str(seq).rjust(WIDTHS_1251["seq"], "0"), WIDTHS_1251["seq"]),
-        fmt_fixed(base["obj"], WIDTHS_1251["obj"]),
-        fmt_fixed(base["auth"], WIDTHS_1251["auth"]),
-        " " * WIDTHS_1251["sp4"],
-        fmt_fixed(field, WIDTHS_1251["field"]),
-        fmt_fixed(low, WIDTHS_1251["low"]),
-        fmt_fixed(high, WIDTHS_1251["high"]),
-        base["tail"],
+        fmt_fixed(base["table"], PREFIX_WIDTHS["table"]),
+        base["sp40"],
+        fmt_fixed(base["mandt"], PREFIX_WIDTHS["mandt"]),
+        fmt_fixed(base["role"], PREFIX_WIDTHS["role"]),
+        fmt_fixed(str(seq).rjust(PREFIX_WIDTHS["seq"], "0"), PREFIX_WIDTHS["seq"]),
+        fmt_fixed(base["object"], W1251["object"]),
+        fmt_fixed(base["auth"], W1251["auth"]),
+        fmt_fixed(base.get("variant_pad", ""), W1251["variant_pad"]),
+        fmt_fixed(field, W1251["field"]),
+        fmt_fixed(low, W1251["low"]),
+        fmt_fixed(high, W1251["high"]),
+        base.get("modified", " "),
+        base.get("deleted", " "),
+        base.get("copied", " "),
+        base.get("neu", " "),
+        fmt_fixed(base.get("node", ""), W1251["node"]),
+        base.get("tail", ""),
     ]
     return "".join(parts)
 
 
-def compose_line_1252(base, seq, org_field, org_value, high):
-    # Do not propagate legacy tail content (could contain old HIGH); rebuild clean line.
+def compose_line_1252(base, seq, varbl, org_value, high):
     return "".join(
         [
-            fmt_fixed("AGR_1252", WIDTHS_1252["table"]),
-            " " * WIDTHS_1252["sp40"],
-            fmt_fixed(base["mandt"], WIDTHS_1252["mandt"]),
-            fmt_fixed(base["role"], WIDTHS_1252["role"]),
-            fmt_fixed(str(seq).rjust(WIDTHS_1252["seq"], "0"), WIDTHS_1252["seq"]),
-            fmt_fixed(org_field, WIDTHS_1252["org_field"]),
-            " " * WIDTHS_1252["sp30"],
-            fmt_fixed(org_value, WIDTHS_1252["org_value"]),
-            fmt_fixed(high, WIDTHS_1252["high"]),
-            "",
+            fmt_fixed("AGR_1252", PREFIX_WIDTHS["table"]),
+            " " * PREFIX_WIDTHS["sp40"],
+            fmt_fixed(base["mandt"], PREFIX_WIDTHS["mandt"]),
+            fmt_fixed(base["role"], PREFIX_WIDTHS["role"]),
+            fmt_fixed(str(seq).rjust(PREFIX_WIDTHS["seq"], "0"), PREFIX_WIDTHS["seq"]),
+            fmt_fixed(varbl, W1252["varbl"]),
+            " " * W1252["sp30"],
+            fmt_fixed(org_value, W1252["low"]),
+            fmt_fixed(high, W1252["high"]),
+            base.get("tail", ""),
         ]
     )
 
@@ -254,7 +282,7 @@ def parse_rules(path):
         role = norm.get("agr_name", "") or norm.get("role", "")
         obj = norm.get("object", "") or norm.get("objct", "")
         auth = norm.get("auth", "")
-        field = norm.get("field", "") or norm.get("org_field", "")
+        field = norm.get("field", "") or norm.get("org_field", "") or norm.get("varbl", "")
         raw_low = norm.get("low", "") or norm.get("list", "")
         raw_high = norm.get("high", "")
         rules.append(
@@ -264,7 +292,7 @@ def parse_rules(path):
                 "table": table,
                 "mandt": mandt,
                 "role": role,
-                "obj": obj,
+                "object": obj,
                 "auth": auth,
                 "field": field,
                 "pairs": split_pairs(
@@ -306,31 +334,31 @@ def compute_max_seq(entries):
 
 
 def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
-    required = ["mandt", "role", "obj", "auth", "field"]
+    required = ["mandt", "role", "object", "auth", "field"]
     if not all(r.get(k) for k in required):
         counters["warns"] += 1
         log_rows.append(
             [
                 "WARN-RULE",
-                f"Missing mandt/role/obj/auth/field at row {r['row']}",
+                f"Missing mandt/role/object/auth/field at row {r['row']}",
                 "",
             ]
         )
         return
 
     key = (
-        fmt_fixed(r["mandt"], WIDTHS_1251["mandt"]),
-        fmt_fixed(r["role"], WIDTHS_1251["role"]),
-        fmt_fixed(r["obj"], WIDTHS_1251["obj"]),
-        fmt_fixed(r["auth"], WIDTHS_1251["auth"]),
+        fmt_fixed(r["mandt"], PREFIX_WIDTHS["mandt"]),
+        fmt_fixed(r["role"], PREFIX_WIDTHS["role"]),
+        fmt_fixed(r["object"], W1251["object"]),
+        fmt_fixed(r["auth"], W1251["auth"]),
     )
-    field = fmt_fixed(r["field"], WIDTHS_1251["field"]).strip()
+    field = fmt_fixed(r["field"], W1251["field"]).strip()
 
     hits = []
     for e in entries:
         if not e or e.get("deleted") or e["table_type"] != "AGR_1251":
             continue
-        if (e["mandt"], e["role"], e["obj"], e["auth"]) == key and e["field"].strip() == field:
+        if (e["mandt"], e["role"], e["object"], e["auth"]) == key and e["field"].strip() == field:
             hits.append(e)
 
     if not hits:
@@ -369,12 +397,12 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         log_rows.append(["WARN-RULE", f"Missing mandt/role/field at row {r['row']}", ""])
         return
 
-    org_field = r["field"]
+    varbl = r["field"]
     key = (
-        fmt_fixed("AGR_1252", WIDTHS_1252["table"]),
-        fmt_fixed(r["mandt"], WIDTHS_1252["mandt"]),
-        fmt_fixed(r["role"], WIDTHS_1252["role"]),
-        fmt_fixed(org_field, WIDTHS_1252["org_field"]),
+        fmt_fixed("AGR_1252", PREFIX_WIDTHS["table"]),
+        fmt_fixed(r["mandt"], PREFIX_WIDTHS["mandt"]),
+        fmt_fixed(r["role"], PREFIX_WIDTHS["role"]),
+        fmt_fixed(varbl, W1252["varbl"]),
     )
 
     hits = []
@@ -385,7 +413,7 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
             e["table"] == key[0]
             and e["mandt"] == key[1]
             and e["role"] == key[2]
-            and e["org_field"] == key[3]
+            and e["varbl"] == key[3]
         ):
             hits.append(e)
 
