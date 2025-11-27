@@ -10,6 +10,8 @@
 # Usage example:
 #   python mod_agr125x_v3_combined.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
+__version__ = "1.0.0"
+
 import argparse
 import csv
 import re
@@ -383,6 +385,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="Modify AGR_1251 and AGR_1252 fixed-width exports based on a single rules CSV (replace_list)."
     )
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("--in", dest="infile", required=True, help="Input role export file")
     ap.add_argument("--rules", dest="rules", required=True, help="Rules CSV")
     ap.add_argument("--out", dest="outfile", required=True, help="Output role export file (modified)")
