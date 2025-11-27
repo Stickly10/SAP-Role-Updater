@@ -192,6 +192,7 @@ def compose_line_1251(base, seq, field, low, high):
 
 
 def compose_line_1252(base, seq, org_field, org_value, high):
+    # Do not propagate legacy tail content (could contain old HIGH); rebuild clean line.
     return "".join(
         [
             fmt_fixed("AGR_1252", WIDTHS_1252["table"]),
@@ -203,7 +204,7 @@ def compose_line_1252(base, seq, org_field, org_value, high):
             " " * WIDTHS_1252["sp30"],
             fmt_fixed(org_value, WIDTHS_1252["org_value"]),
             fmt_fixed(high, WIDTHS_1252["high"]),
-            base.get("tail", ""),
+            "",
         ]
     )
 
