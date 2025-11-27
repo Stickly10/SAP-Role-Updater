@@ -1,0 +1,4 @@
+ACTION;TABLE;MANDT;AGR_NAME;OBJECT;AUTH;FIELD;LOW;HIGH;
+replace_list;AGR_1251;100;ZT_TEST_TXOOL                   ;M_MSEG_LGO;T-B179192900;LGORT     ;;1;                                        
+replace_list;AGR_1252;100;ZT_TEST_TXOOL                   ;;;$BUKRS                                    ;2*;;
+replace_list;AGR_1252;100;ZT_TEST_TXOOL                   ;;;$WERKS                                    ;1000;;
