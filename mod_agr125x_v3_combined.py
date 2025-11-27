@@ -10,7 +10,7 @@
 # Usage example:
 #   python mod_agr125x_v3_combined.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 import argparse
 import csv
@@ -104,14 +104,19 @@ def split_list(raw_vals: str):
     return dedup
 
 
-def split_pairs(raw_low: str, raw_high: str):
+def split_pairs(raw_low: str, raw_high: str, rule_ctx: dict = None):
     """Pair LOW/HIGH lists; HIGH may be shorter/empty, defaults to ''.
-    If both are empty, return a single empty pair to force replace with blanks."""
+    If both are empty, return a single empty pair to force replace with blanks.
+    If HIGH is provided without LOW, raise a clear validation error."""
     lows = split_list(raw_low)
     highs = split_list(raw_high)
     if not lows and any(h != "" for h in highs):
-        # SAP validation: cannot have HIGH without LOW
-        raise ValueError("Invalid rule: HIGH provided but LOW is empty")
+        ctx = rule_ctx or {}
+        raise ValueError(
+            "E_HIGH_WITHOUT_LOW: HIGH provided but LOW is empty "
+            f"(row={ctx.get('row','?')}, table={ctx.get('table','?')}, "
+            f"role={ctx.get('role','?')}, field={ctx.get('field','?')})"
+        )
     pairs = []
     if not lows and not highs:
         pairs.append(("", ""))
@@ -246,7 +251,11 @@ def parse_rules(path):
                 "obj": obj,
                 "auth": auth,
                 "field": field,
-                "pairs": split_pairs(raw_low, raw_high),
+                "pairs": split_pairs(
+                    raw_low,
+                    raw_high,
+                    {"row": i, "table": table, "role": role, "field": field},
+                ),
             }
         )
     return rules
