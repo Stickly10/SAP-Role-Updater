@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 
 import argparse
 import csv
@@ -48,7 +48,6 @@ W1251 = {
 # AGR_1252 specifics
 W1252 = {
     "varbl": 40,  # $ + field name padded
-    "sp30": 30,
     "low": 40,
     "high": 40,
 }
@@ -66,14 +65,14 @@ RX_1251 = re.compile(
 RX_1252 = re.compile(
     rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
     rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
-    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{{W1252['varbl']}}})(?P<sp30>\s{{{W1252['sp30']}}})"
+    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{{W1252['varbl']}}})"
     rf"(?P<low>.{{{W1252['low']}}})(?P<high>.{{{W1252['high']}}})(?P<tail>.*)$"
 )
 # Legacy format (VARBL width 10 + LOW up to 4, no HIGH)
 RX_1252_LEGACY = re.compile(
     rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
     rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
-    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{10}})(?P<sp30>\s{{{W1252['sp30']}}})"
+    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{10}})"
     rf"(?P<low>.{{0,4}})(?P<tail>.*)$"
 )
 
@@ -219,7 +218,6 @@ def parse_entry_1252(line):
         "role": m.group("role"),
         "seq": m.group("seq"),
         "varbl": m.group("varbl"),
-        "sp30": m.group("sp30"),
         "low": m.group("low"),
         "high": high_val,
         "tail": m.group("tail"),
@@ -259,7 +257,6 @@ def compose_line_1252(base, seq, varbl, org_value, high):
             fmt_fixed(base["role"], PREFIX_WIDTHS["role"]),
             fmt_fixed(str(seq).rjust(PREFIX_WIDTHS["seq"], "0"), PREFIX_WIDTHS["seq"]),
             fmt_fixed(varbl, W1252["varbl"]),
-            " " * W1252["sp30"],
             fmt_fixed(org_value, W1252["low"]),
             fmt_fixed(high, W1252["high"]),
             base.get("tail", ""),
