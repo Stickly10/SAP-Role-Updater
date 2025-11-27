@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# RoleUpdater 1.2.0 – Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
+# SAP-Role-Updater 1.2.1 – Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
@@ -8,9 +8,9 @@
 #   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
 #   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (40 chars each, padded).
 # Usage example:
-#   python RoleUpdater_1.2.0.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
+#   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 import argparse
 import csv
