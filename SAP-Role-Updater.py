@@ -493,7 +493,7 @@ def main():
         for i, e in enumerate(entries):
             if e is None:
                 out_lines.append(lines[i])  # original non-target line
-            elif not e.get("deleted"):
+            elif not e.get("marked_deleted"):
                 out_lines.append(e["raw"])
 
         if not args.dry_run:
