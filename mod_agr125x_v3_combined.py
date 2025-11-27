@@ -10,12 +10,14 @@
 # Usage example:
 #   python mod_agr125x_v3_combined.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.0.4"
+__version__ = "1.1.0"
 
 import argparse
 import csv
 import re
+import sys
 from collections import defaultdict
+from error_handler import CodedError, emit_error, raise_error
 
 # ---------------- widths and regex ----------------
 
@@ -112,10 +114,13 @@ def split_pairs(raw_low: str, raw_high: str, rule_ctx: dict = None):
     highs = split_list(raw_high)
     if not lows and any(h != "" for h in highs):
         ctx = rule_ctx or {}
-        raise ValueError(
-            "E_HIGH_WITHOUT_LOW: HIGH provided but LOW is empty "
-            f"(row={ctx.get('row','?')}, table={ctx.get('table','?')}, "
-            f"role={ctx.get('role','?')}, field={ctx.get('field','?')})"
+        raise_error(
+            "VAL-002",
+            "SEV2",
+            "HIGH provided but LOW is empty",
+            err_type="Validation",
+            origin="split_pairs",
+            details=f"row={ctx.get('row','?')}, table={ctx.get('table','?')}, role={ctx.get('role','?')}, field={ctx.get('field','?')}",
         )
     pairs = []
     if not lows and not highs:
@@ -226,7 +231,7 @@ def compose_line_1252(base, seq, org_field, org_value, high):
 def parse_rules(path):
     txt, _ = read_text(path)
     if not txt:
-        raise ValueError("Reglas vacias")
+        raise_error("VAL-001", "SEV3", "Rules file is empty", origin="parse_rules", err_type="Validation")
     delim = detect_delimiter(txt[0])
     reader = csv.DictReader(txt, delimiter=delim)
     rules = []
@@ -410,60 +415,75 @@ def main():
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False)
     args = ap.parse_args()
 
-    lines, enc = read_text(args.infile)
-    entries = build_entries(lines)
-    rules = parse_rules(args.rules)
-    role_to_maxseq = compute_max_seq(entries)
+    try:
+        lines, enc = read_text(args.infile)
+        entries = build_entries(lines)
+        rules = parse_rules(args.rules)
+        role_to_maxseq = compute_max_seq(entries)
 
-    counters = {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0}
-    log_rows = []
+        counters = {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0}
+        log_rows = []
 
-    for r in rules:
-        if r["action"] != "replace_list":
-            counters["warns"] += 1
-            log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
-            continue
-        if r["table"] == "AGR_1251":
-            handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters)
-        elif r["table"] == "AGR_1252":
-            handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters)
-        else:
-            counters["warns"] += 1
-            log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
+        for r in rules:
+            if r["action"] != "replace_list":
+                counters["warns"] += 1
+                log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
+                continue
+            if r["table"] == "AGR_1251":
+                handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters)
+            elif r["table"] == "AGR_1252":
+                handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters)
+            else:
+                counters["warns"] += 1
+                log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
 
-    out_lines = []
-    for i, e in enumerate(entries):
-        if e is None:
-            out_lines.append(lines[i])  # original non-target line
-        elif not e.get("deleted"):
-            out_lines.append(e["raw"])
+        out_lines = []
+        for i, e in enumerate(entries):
+            if e is None:
+                out_lines.append(lines[i])  # original non-target line
+            elif not e.get("deleted"):
+                out_lines.append(e["raw"])
 
-    if not args.dry_run:
-        with open(args.outfile, "w", encoding=enc, newline="\n") as f:
-            for ln in out_lines:
-                f.write(ln + "\n")
+        if not args.dry_run:
+            with open(args.outfile, "w", encoding=enc, newline="\n") as f:
+                for ln in out_lines:
+                    f.write(ln + "\n")
 
-    log_path = args.outfile + "_log.csv"
-    with open(log_path, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["action", "before", "after"])
-        for a, b, c in log_rows:
-            w.writerow(
-                [
-                    a,
-                    (b or "").replace("\r", " ").replace("\n", " "),
-                    (c or "").replace("\r", " ").replace("\n", " "),
-                ]
-            )
+        log_path = args.outfile + "_log.csv"
+        with open(log_path, "w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["action", "before", "after"])
+            for a, b, c in log_rows:
+                w.writerow(
+                    [
+                        a,
+                        (b or "").replace("\r", " ").replace("\n", " "),
+                        (c or "").replace("\r", " ").replace("\n", " "),
+                    ]
+                )
 
-    if args.verbose:
-        print(f"[rules] {len(rules)} processed")
-    print(f"[end] {'Dry-run, no file written.' if args.dry_run else 'Written: ' + args.outfile}")
-    print(
-        f"[summary] adds={counters['adds']} deletes={counters['deletes']} "
-        f"replaces={counters['replaces']} warns={counters['warns']}"
-    )
-    print(f"[log] {log_path}")
+        if args.verbose:
+            print(f"[rules] {len(rules)} processed")
+        print(f"[end] {'Dry-run, no file written.' if args.dry_run else 'Written: ' + args.outfile}")
+        print(
+            f"[summary] adds={counters['adds']} deletes={counters['deletes']} "
+            f"replaces={counters['replaces']} warns={counters['warns']}"
+        )
+        print(f"[log] {log_path}")
+    except CodedError as ce:
+        emit_error(ce)
+        sys.exit(1)
+    except Exception as ex:
+        wrapped = CodedError(
+            "SYS-500",
+            "SEV1",
+            "Unhandled exception",
+            details=str(ex),
+            err_type="System",
+            origin="main",
+        )
+        emit_error(wrapped)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
