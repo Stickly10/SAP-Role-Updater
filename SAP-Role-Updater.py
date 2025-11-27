@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SAP-Role-Updater 1.2.1 – Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
+# SAP-Role-Updater – Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
