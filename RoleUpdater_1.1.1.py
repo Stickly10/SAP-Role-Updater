@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# RoleUpdater 1.1.0 — Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
+# RoleUpdater 1.1.1 — Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
@@ -8,9 +8,9 @@
 #   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
 #   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (40 chars each, padded).
 # Usage example:
-#   python RoleUpdater_1.1.0.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
+#   python RoleUpdater_1.1.1.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 import argparse
 import csv
@@ -138,6 +138,17 @@ def split_pairs(raw_low: str, raw_high: str, rule_ctx: dict = None):
             seen.add(key)
             dedup.append(key)
     return dedup
+
+
+def append_replace_logs(befores, afters, log_rows):
+    """Align before/after lists and log REPLACE rows duplicating the shorter side."""
+    if not befores and not afters:
+        return
+    n = max(len(befores), len(afters))
+    for i in range(n):
+        b = befores[min(i, len(befores) - 1)] if befores else ""
+        a = afters[min(i, len(afters) - 1)] if afters else ""
+        log_rows.append(["REPLACE", b, a])
 
 
 # ---------------- parse entries ----------------
@@ -328,24 +339,27 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
         return
 
     base = hits[0]
+    befores = []
     for h in hits:
         h["deleted"] = True
+        befores.append(h["raw"])
         counters["deletes"] += 1
-        log_rows.append(["DELETE", h["raw"], ""])
 
     next_seq = role_to_maxseq[("AGR_1251", base["role"])] + 1
+    afters = []
     for low_val, high_val in r["pairs"]:
         new_line = compose_line_1251(base, next_seq, field, low_val, high_val)
         role_to_maxseq[("AGR_1251", base["role"])] = next_seq
         next_seq += 1
         counters["adds"] += 1
-        log_rows.append(["ADD", "", new_line])
+        afters.append(new_line)
         ne = parse_entry_1251(new_line)
         ne["index"] = len(entries)
         ne["deleted"] = False
         entries.append(ne)
 
     counters["replaces"] += 1
+    append_replace_logs(befores, afters, log_rows)
 
 
 def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
@@ -381,24 +395,27 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         return
 
     base = hits[0]
+    befores = []
     for h in hits:
         h["deleted"] = True
+        befores.append(h["raw"])
         counters["deletes"] += 1
-        log_rows.append(["DELETE", h["raw"], ""])
 
     next_seq = role_to_maxseq[("AGR_1252", base["role"])] + 1
+    afters = []
     for low_val, high_val in r["pairs"]:
         new_line = compose_line_1252(base, next_seq, key[3], low_val, high_val)
         role_to_maxseq[("AGR_1252", base["role"])] = next_seq
         next_seq += 1
         counters["adds"] += 1
-        log_rows.append(["ADD", "", new_line])
+        afters.append(new_line)
         ne = parse_entry_1252(new_line)
         ne["index"] = len(entries)
         ne["deleted"] = False
         entries.append(ne)
 
     counters["replaces"] += 1
+    append_replace_logs(befores, afters, log_rows)
 
 
 # ---------------- main ----------------
