@@ -402,12 +402,14 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         log_rows.append(["WARN-RULE", f"Missing mandt/role/field at row {r['row']}", ""])
         return
 
-    varbl = r["field"].strip()
+    mandt_clean = r["mandt"].strip()
+    role_clean = r["role"].strip()
+    varbl_clean = r["field"].strip()
     key = (
         fmt_fixed("AGR_1252", PREFIX_WIDTHS["table"]),
-        fmt_fixed(r["mandt"], PREFIX_WIDTHS["mandt"]),
-        fmt_fixed(r["role"], PREFIX_WIDTHS["role"]),
-        fmt_fixed(varbl, W1252["varbl"]),
+        fmt_fixed(mandt_clean, PREFIX_WIDTHS["mandt"]),
+        fmt_fixed(role_clean, PREFIX_WIDTHS["role"]),
+        fmt_fixed(varbl_clean, W1252["varbl"]),
     )
 
     hits = []
@@ -415,10 +417,10 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         if not e or e.get("marked_deleted") or e["table_type"] != "AGR_1252":
             continue
         if (
-            e["table"] == key[0]
-            and e["mandt"] == key[1]
-            and e["role"] == key[2]
-            and e["varbl"].strip() == varbl
+            e["table"].strip() == "AGR_1252"
+            and e["mandt"].strip() == mandt_clean
+            and e["role"].strip() == role_clean
+            and e["varbl"].strip() == varbl_clean
         ):
             hits.append(e)
 
