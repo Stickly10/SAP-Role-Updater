@@ -4,6 +4,9 @@
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
 # - Log CSV with header: action,before,after.
+# Rules columns (case-insensitive): ACTION, TABLE, MANDT, AGR_NAME, OBJECT, AUTH, FIELD, LOW, HIGH
+#   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
+#   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (4 chars in export).
 # Usage example:
 #   python mod_agr125x_v3_combined.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
@@ -34,7 +37,8 @@ WIDTHS_1252 = {
     "seq": 6,
     "org_field": 10,
     "sp30": 30,
-    "org_value": 4,
+    "org_value": 4,  # SAP org values are typically <=4 chars (BUKRS/WERKS/etc.)
+    "high": 4,       # same width used for HIGH
 }
 
 # Capture fixed-width segments, preserving the gap after AGR_1251
@@ -44,7 +48,7 @@ RX_1251 = re.compile(
 
 RX_1252 = re.compile(
     r"^(?P<table>.{10})(?P<sp40>\s{40})(?P<mandt>\d{3})(?P<role>.{30})(?P<seq>\d{6})"
-    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{0,4})(?P<tail>.*)$"
+    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{0,4})(?P<high>.{0,4})(?P<tail>.*)$"
 )
 
 
@@ -92,6 +96,25 @@ def split_list(raw_vals: str):
     return dedup
 
 
+def split_pairs(raw_low: str, raw_high: str):
+    """Pair LOW/HIGH lists; HIGH may be shorter/empty, defaults to ''."""
+    lows = split_list(raw_low)
+    highs = split_list(raw_high)
+    pairs = []
+    for idx, low_val in enumerate(lows):
+        high_val = highs[idx] if idx < len(highs) else ""
+        pairs.append((low_val, high_val))
+    # de-dupe by (low, high) preserving order
+    seen = set()
+    dedup = []
+    for low_val, high_val in pairs:
+        key = (low_val, high_val)
+        if key not in seen:
+            seen.add(key)
+            dedup.append(key)
+    return dedup
+
+
 # ---------------- parse entries ----------------
 
 def parse_entry_1251(line):
@@ -131,6 +154,7 @@ def parse_entry_1252(line):
         "org_field": m.group("org_field"),
         "sp30": m.group("sp30"),
         "org_value": m.group("org_value"),
+        "high": m.group("high"),
         "tail": m.group("tail"),
     }
 
@@ -152,7 +176,7 @@ def compose_line_1251(base, seq, field, low, high):
     return "".join(parts)
 
 
-def compose_line_1252(base, seq, org_field, org_value):
+def compose_line_1252(base, seq, org_field, org_value, high):
     return "".join(
         [
             fmt_fixed("AGR_1252", WIDTHS_1252["table"]),
@@ -163,6 +187,7 @@ def compose_line_1252(base, seq, org_field, org_value):
             fmt_fixed(org_field, WIDTHS_1252["org_field"]),
             " " * WIDTHS_1252["sp30"],
             fmt_fixed(org_value, WIDTHS_1252["org_value"]),
+            fmt_fixed(high, WIDTHS_1252["high"]),
             base.get("tail", ""),
         ]
     )
@@ -186,7 +211,8 @@ def parse_rules(path):
         obj = norm.get("object", "") or norm.get("objct", "")
         auth = norm.get("auth", "")
         field = norm.get("field", "") or norm.get("org_field", "")
-        raw_vals = norm.get("low", "") or norm.get("list", "")
+        raw_low = norm.get("low", "") or norm.get("list", "")
+        raw_high = norm.get("high", "")
         rules.append(
             {
                 "row": i,
@@ -197,7 +223,7 @@ def parse_rules(path):
                 "obj": obj,
                 "auth": auth,
                 "field": field,
-                "list": split_list(raw_vals),
+                "pairs": split_pairs(raw_low, raw_high),
             }
         )
     return rules
@@ -271,8 +297,8 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
         log_rows.append(["DELETE", h["raw"], ""])
 
     next_seq = role_to_maxseq[("AGR_1251", base["role"])] + 1
-    for val in r["list"]:
-        new_line = compose_line_1251(base, next_seq, field, val, "")
+    for low_val, high_val in r["pairs"]:
+        new_line = compose_line_1251(base, next_seq, field, low_val, high_val)
         role_to_maxseq[("AGR_1251", base["role"])] = next_seq
         next_seq += 1
         counters["adds"] += 1
@@ -324,8 +350,8 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         log_rows.append(["DELETE", h["raw"], ""])
 
     next_seq = role_to_maxseq[("AGR_1252", base["role"])] + 1
-    for val in r["list"]:
-        new_line = compose_line_1252(base, next_seq, key[3], val)
+    for low_val, high_val in r["pairs"]:
+        new_line = compose_line_1252(base, next_seq, key[3], low_val, high_val)
         role_to_maxseq[("AGR_1252", base["role"])] = next_seq
         next_seq += 1
         counters["adds"] += 1
