@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 
 import argparse
 import csv
@@ -278,6 +278,9 @@ def parse_rules(path):
     rules = []
     for i, row in enumerate(reader, start=2):  # start at data row
         norm = { (k or "").strip().lower(): (v or "").strip() for k, v in row.items() }
+        # skip fully empty rows
+        if all(v == "" for v in norm.values()):
+            continue
         action = (norm.get("action", "replace_list") or "replace_list").lower()
         table = (norm.get("table", "") or "").upper()
         mandt = norm.get("mandt", "")
@@ -399,7 +402,7 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         log_rows.append(["WARN-RULE", f"Missing mandt/role/field at row {r['row']}", ""])
         return
 
-    varbl = r["field"]
+    varbl = r["field"].strip()
     key = (
         fmt_fixed("AGR_1252", PREFIX_WIDTHS["table"]),
         fmt_fixed(r["mandt"], PREFIX_WIDTHS["mandt"]),
@@ -415,7 +418,7 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
             e["table"] == key[0]
             and e["mandt"] == key[1]
             and e["role"] == key[2]
-            and e["varbl"] == key[3]
+            and e["varbl"].strip() == varbl
         ):
             hits.append(e)
 
