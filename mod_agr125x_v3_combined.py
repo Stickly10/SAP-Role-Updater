@@ -6,7 +6,7 @@
 # - Log CSV with header: action,before,after.
 # Rules columns (case-insensitive): ACTION, TABLE, MANDT, AGR_NAME, OBJECT, AUTH, FIELD, LOW, HIGH
 #   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
-#   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (4 chars in export).
+#   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (40 chars each, padded).
 # Usage example:
 #   python mod_agr125x_v3_combined.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
@@ -37,8 +37,8 @@ WIDTHS_1252 = {
     "seq": 6,
     "org_field": 10,
     "sp30": 30,
-    "org_value": 4,  # SAP org values are typically <=4 chars (BUKRS/WERKS/etc.)
-    "high": 4,       # same width used for HIGH
+    "org_value": 40,  # LOW width (AGR_1252-Low)
+    "high": 40,       # HIGH width (AGR_1252-High)
 }
 
 # Capture fixed-width segments, preserving the gap after AGR_1251
@@ -46,9 +46,15 @@ RX_1251 = re.compile(
     r"^(AGR_1251)(\s+)(\d{3})(.{30})(\d{6})(.{10})(.{12})\s{4}(.{10})(.{40})(.{40})(.*)$"
 )
 
+# New 40/40 width (LOW/HIGH) format
 RX_1252 = re.compile(
     r"^(?P<table>.{10})(?P<sp40>\s{40})(?P<mandt>\d{3})(?P<role>.{30})(?P<seq>\d{6})"
-    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{0,4})(?P<high>.{0,4})(?P<tail>.*)$"
+    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{40})(?P<high>.{40})(?P<tail>.*)$"
+)
+# Legacy format (LOW up to 4 chars, no HIGH)
+RX_1252_LEGACY = re.compile(
+    r"^(?P<table>.{10})(?P<sp40>\s{40})(?P<mandt>\d{3})(?P<role>.{30})(?P<seq>\d{6})"
+    r"(?P<org_field>.{10})(?P<sp30>\s{30})(?P<org_value>.{0,4})(?P<tail>.*)$"
 )
 
 
@@ -140,7 +146,14 @@ def parse_entry_1251(line):
 def parse_entry_1252(line):
     m = RX_1252.match(line)
     if not m:
-        return None
+        # Try legacy without HIGH and 4-char LOW
+        m2 = RX_1252_LEGACY.match(line)
+        if not m2:
+            return None
+        m = m2
+        high_val = ""
+    else:
+        high_val = m.group("high")
     if m.group("table").strip() != "AGR_1252":
         return None
     return {
@@ -154,7 +167,7 @@ def parse_entry_1252(line):
         "org_field": m.group("org_field"),
         "sp30": m.group("sp30"),
         "org_value": m.group("org_value"),
-        "high": m.group("high"),
+        "high": high_val,
         "tail": m.group("tail"),
     }
 
