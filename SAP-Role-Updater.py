@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 import argparse
 import csv
@@ -193,6 +193,7 @@ def parse_entry_1251(line):
         "neu": m.group("neu"),
         "node": m.group("node"),
         "tail": m.group("tail"),
+        "marked_deleted": False,
     }
 
 
@@ -222,6 +223,7 @@ def parse_entry_1252(line):
         "low": m.group("low"),
         "high": high_val,
         "tail": m.group("tail"),
+        "marked_deleted": False,
     }
 
 
@@ -315,7 +317,7 @@ def build_entries(lines):
             e = parse_entry_1252(ln)
         if e:
             e["index"] = idx
-            e["deleted"] = False
+            e["marked_deleted"] = False
         entries.append(e)  # None means non-target line
     return entries
 
@@ -356,7 +358,7 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
 
     hits = []
     for e in entries:
-        if not e or e.get("deleted") or e["table_type"] != "AGR_1251":
+        if not e or e.get("marked_deleted") or e["table_type"] != "AGR_1251":
             continue
         if (e["mandt"], e["role"], e["object"], e["auth"]) == key and e["field"].strip() == field:
             hits.append(e)
@@ -369,7 +371,7 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
     base = hits[0]
     befores = []
     for h in hits:
-        h["deleted"] = True
+        h["marked_deleted"] = True
         befores.append(h["raw"])
         counters["deletes"] += 1
 
@@ -383,7 +385,7 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
         afters.append(new_line)
         ne = parse_entry_1251(new_line)
         ne["index"] = len(entries)
-        ne["deleted"] = False
+        ne["marked_deleted"] = False
         entries.append(ne)
 
     counters["replaces"] += 1
@@ -407,7 +409,7 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
 
     hits = []
     for e in entries:
-        if not e or e.get("deleted") or e["table_type"] != "AGR_1252":
+        if not e or e.get("marked_deleted") or e["table_type"] != "AGR_1252":
             continue
         if (
             e["table"] == key[0]
@@ -425,7 +427,7 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
     base = hits[0]
     befores = []
     for h in hits:
-        h["deleted"] = True
+        h["marked_deleted"] = True
         befores.append(h["raw"])
         counters["deletes"] += 1
 
@@ -439,7 +441,7 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
         afters.append(new_line)
         ne = parse_entry_1252(new_line)
         ne["index"] = len(entries)
-        ne["deleted"] = False
+        ne["marked_deleted"] = False
         entries.append(ne)
 
     counters["replaces"] += 1
