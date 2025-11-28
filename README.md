@@ -60,6 +60,19 @@ python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
    ```
 3) El binario quedará en `dist/SAP-Role-Updater.exe`.  
    Incluye `gui_app.py` y `error_handler.py` automáticamente al ser importados.  
+4) Firma opcional (requiere certificado):  
+   ```bash
+   "C:\Users\Andres Medina\OneDrive - Txool Evolucion\Documentos\Txool\Interno\Programas\SignTool-10.0.22621.6-x64\signtool.exe" sign ^
+     /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ^
+     /f ruta\tu_certificado.pfx /p TU_PASSWORD ^
+     dist\SAP-Role-Updater.exe
+   ```
+5) Metadatos opcionales: crea `version_info.txt` con CompanyName, ProductName, FileDescription, FileVersion, etc., y ejecuta:
+   ```bash
+   pyinstaller --noconsole --onefile --name SAP-Role-Updater --version-file version_info.txt SAP-Role-Updater.py
+   ```
+6) SmartScreen: puede advertir; verifica hash y origen oficial (este repo).  
+   - SHA256 del .exe publicado: **(pendiente; agregar cuando se publique el release)**.
 
 ## Sobre el repositorio (sugerencia para GitHub “About”)
 - Description: `Modifier para exportes SAP de roles (AGR_1251/1252) con GUI/CLI y reglas CSV.`
