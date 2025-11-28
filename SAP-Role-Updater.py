@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
 
-__version__ = "1.3.5"
+__version__ = "1.3.6"
 
 import argparse
 import csv
@@ -547,7 +547,8 @@ def main():
     ap.add_argument("--gui", dest="gui", action="store_true", help="Launch simple GUI and ignore CLI paths")
     args = ap.parse_args()
 
-    if args.gui:
+    auto_gui = len(sys.argv) == 1
+    if auto_gui or args.gui:
         launch_gui(run_job, __version__)
         return
     if not (args.infile and args.rules and args.outdir):
