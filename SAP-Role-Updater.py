@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.2.6"
+__version__ = "1.2.7"
 
 import argparse
 import csv
@@ -27,7 +27,7 @@ PREFIX_WIDTHS = {
     "sp40": 40,
     "mandt": 3,
     "role": 30,
-    "seq": 6,
+    "counter": 6,
 }
 
 # AGR_1251 specifics
@@ -57,7 +57,7 @@ W1252 = {
 RX_1251 = re.compile(
     rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
     rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
-    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<object>.{{{W1251['object']}}})(?P<auth>.{{{W1251['auth']}}})"
+    rf"(?P<counter>\d{{{PREFIX_WIDTHS['counter']}}})(?P<object>.{{{W1251['object']}}})(?P<auth>.{{{W1251['auth']}}})"
     rf"(?P<variant_pad>.{{{W1251['variant_pad']}}})(?P<field>.{{{W1251['field']}}})(?P<low>.{{{W1251['low']}}})"
     rf"(?P<high>.{{{W1251['high']}}})(?P<modified>.{{{W1251['modified']}}})(?P<deleted>.{{{W1251['deleted']}}})"
     rf"(?P<copied>.{{{W1251['copied']}}})(?P<neu>.{{{W1251['neu']}}})(?P<node>.{{{W1251['node']}}})(?P<tail>.*)$"
@@ -66,14 +66,14 @@ RX_1251 = re.compile(
 RX_1252 = re.compile(
     rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
     rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
-    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{{W1252['varbl']}}})(?P<sp30>\s{{{W1252['sp30']}}})"
+    rf"(?P<counter>\d{{{PREFIX_WIDTHS['counter']}}})(?P<varbl>.{{{W1252['varbl']}}})(?P<sp30>\s{{{W1252['sp30']}}})"
     rf"(?P<low>.{{0,{W1252['low']}}})(?P<high>.{{0,{W1252['high']}}})(?P<tail>.*)$"
 )
 # Legacy format (VARBL width 10 + LOW up to 4, no HIGH)
 RX_1252_LEGACY = re.compile(
     rf"^(?P<table>.{{{PREFIX_WIDTHS['table']}}})(?P<sp40>\s{{{PREFIX_WIDTHS['sp40']}}})"
     rf"(?P<mandt>\d{{{PREFIX_WIDTHS['mandt']}}})(?P<role>.{{{PREFIX_WIDTHS['role']}}})"
-    rf"(?P<seq>\d{{{PREFIX_WIDTHS['seq']}}})(?P<varbl>.{{{W1252['varbl']}}})(?P<sp30>\s{{{W1252['sp30']}}})"
+    rf"(?P<counter>\d{{{PREFIX_WIDTHS['counter']}}})(?P<varbl>.{{{W1252['varbl']}}})(?P<sp30>\s{{{W1252['sp30']}}})"
     rf"(?P<low>.{{0,4}})(?P<tail>.*)$"
 )
 
@@ -180,7 +180,7 @@ def parse_entry_1251(line):
         "sp40": m.group("sp40"),
         "mandt": m.group("mandt"),
         "role": m.group("role"),
-        "seq": m.group("seq"),
+        "counter": m.group("counter"),
         "object": m.group("object"),
         "auth": m.group("auth"),
         "variant_pad": m.group("variant_pad"),
@@ -217,7 +217,7 @@ def parse_entry_1252(line):
         "sp40": m.group("sp40"),
         "mandt": m.group("mandt"),
         "role": m.group("role"),
-        "seq": m.group("seq"),
+        "counter": m.group("counter"),
         "varbl": m.group("varbl"),
         "sp30": m.group("sp30"),
         "low": m.group("low"),
@@ -227,13 +227,13 @@ def parse_entry_1252(line):
     }
 
 
-def compose_line_1251(base, seq, field, low, high):
+def compose_line_1251(base, counter, field, low, high):
     parts = [
         fmt_fixed(base["table"], PREFIX_WIDTHS["table"]),
         base["sp40"],
         fmt_fixed(base["mandt"], PREFIX_WIDTHS["mandt"]),
         fmt_fixed(base["role"], PREFIX_WIDTHS["role"]),
-        fmt_fixed(str(seq).rjust(PREFIX_WIDTHS["seq"], "0"), PREFIX_WIDTHS["seq"]),
+        fmt_fixed(str(counter).rjust(PREFIX_WIDTHS["counter"], "0"), PREFIX_WIDTHS["counter"]),
         fmt_fixed(base["object"], W1251["object"]),
         fmt_fixed(base["auth"], W1251["auth"]),
         fmt_fixed(base.get("variant_pad", ""), W1251["variant_pad"]),
@@ -250,14 +250,14 @@ def compose_line_1251(base, seq, field, low, high):
     return "".join(parts)
 
 
-def compose_line_1252(base, seq, varbl, org_value, high):
+def compose_line_1252(base, counter, varbl, org_value, high):
     return "".join(
         [
             fmt_fixed("AGR_1252", PREFIX_WIDTHS["table"]),
             " " * PREFIX_WIDTHS["sp40"],
             fmt_fixed(base["mandt"], PREFIX_WIDTHS["mandt"]),
             fmt_fixed(base["role"], PREFIX_WIDTHS["role"]),
-            fmt_fixed(str(seq).rjust(PREFIX_WIDTHS["seq"], "0"), PREFIX_WIDTHS["seq"]),
+            fmt_fixed(str(counter).rjust(PREFIX_WIDTHS["counter"], "0"), PREFIX_WIDTHS["counter"]),
             fmt_fixed(varbl, W1252["varbl"]),
             " " * W1252["sp30"],
             fmt_fixed(org_value, W1252["low"]),
@@ -325,20 +325,30 @@ def build_entries(lines):
     return entries
 
 
-def compute_max_seq(entries):
-    """Track max seq per (table_type, role)."""
-    maxseq = defaultdict(lambda: 0)
+def build_counters_state(entries):
+    """Track used counters per (table_type, role)."""
+    used = defaultdict(set)
     for e in entries:
-        if e and "seq" in e:
+        if e and "counter" in e:
             try:
                 key = (e["table_type"], e["role"])
-                maxseq[key] = max(maxseq[key], int(e["seq"]))
+                used[key].add(int(e["counter"]))
             except ValueError:
                 continue
-    return maxseq
+    return used
 
 
-def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
+def next_counter(key, used):
+    """Return the smallest available counter for the role/table and mark it used."""
+    n = 1
+    s = used[key]
+    while n in s:
+        n += 1
+    s.add(n)
+    return n
+
+
+def handle_rule_1251(r, entries, counters_used, log_rows, counters):
     required = ["mandt", "role", "object", "auth", "field"]
     if not all(r.get(k) for k in required):
         counters["warns"] += 1
@@ -375,15 +385,18 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
     befores = []
     for h in hits:
         h["marked_deleted"] = True
+        try:
+            counters_used[("AGR_1251", h["role"])].discard(int(h["counter"]))
+        except ValueError:
+            pass
         befores.append(h["raw"])
         counters["deletes"] += 1
 
-    next_seq = role_to_maxseq[("AGR_1251", base["role"])] + 1
+    role_key = ("AGR_1251", base["role"])
     afters = []
     for low_val, high_val in r["pairs"]:
-        new_line = compose_line_1251(base, next_seq, field, low_val, high_val)
-        role_to_maxseq[("AGR_1251", base["role"])] = next_seq
-        next_seq += 1
+        counter_val = next_counter(role_key, counters_used)
+        new_line = compose_line_1251(base, counter_val, field, low_val, high_val)
         counters["adds"] += 1
         afters.append(new_line)
         ne = parse_entry_1251(new_line)
@@ -395,7 +408,7 @@ def handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters):
     append_replace_logs(befores, afters, log_rows)
 
 
-def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
+def handle_rule_1252(r, entries, counters_used, log_rows, counters):
     required = ["mandt", "role", "field"]
     if not all(r.get(k) for k in required):
         counters["warns"] += 1
@@ -433,15 +446,18 @@ def handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters):
     befores = []
     for h in hits:
         h["marked_deleted"] = True
+        try:
+            counters_used[("AGR_1252", h["role"])].discard(int(h["counter"]))
+        except ValueError:
+            pass
         befores.append(h["raw"])
         counters["deletes"] += 1
 
-    next_seq = role_to_maxseq[("AGR_1252", base["role"])] + 1
+    role_key = ("AGR_1252", base["role"])
     afters = []
     for low_val, high_val in r["pairs"]:
-        new_line = compose_line_1252(base, next_seq, key[3], low_val, high_val)
-        role_to_maxseq[("AGR_1252", base["role"])] = next_seq
-        next_seq += 1
+        counter_val = next_counter(role_key, counters_used)
+        new_line = compose_line_1252(base, counter_val, key[3], low_val, high_val)
         counters["adds"] += 1
         afters.append(new_line)
         ne = parse_entry_1252(new_line)
@@ -471,7 +487,7 @@ def main():
         lines, enc = read_text(args.infile)
         entries = build_entries(lines)
         rules = parse_rules(args.rules)
-        role_to_maxseq = compute_max_seq(entries)
+        counters_used = build_counters_state(entries)
 
         counters = {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0}
         log_rows = []
@@ -482,9 +498,9 @@ def main():
                 log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
                 continue
             if r["table"] == "AGR_1251":
-                handle_rule_1251(r, entries, role_to_maxseq, log_rows, counters)
+                handle_rule_1251(r, entries, counters_used, log_rows, counters)
             elif r["table"] == "AGR_1252":
-                handle_rule_1252(r, entries, role_to_maxseq, log_rows, counters)
+                handle_rule_1252(r, entries, counters_used, log_rows, counters)
             else:
                 counters["warns"] += 1
                 log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
