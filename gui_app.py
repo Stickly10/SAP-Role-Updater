@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Tkinter GUI launcher for SAP-Role-Updater."""
 
-import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import os
 
 
 ACCENT = "#0078D4"
 BG = "#282C34"
 FG = "#e6e8eb"
-ENTRY_BG = "#1f2329"
+ENTRY_BG = "#ffffff"
+ENTRY_FG = "#111827"
 ERROR_BG = "#3c1f20"
 FONT_FAMILY = "Segoe UI"
 
@@ -32,8 +33,8 @@ def _apply_modern_theme(root):
     style.map("Accent.TButton", background=[("active", "#1d8fe3")])
     style.configure("TButton", padding=6, font=(FONT_FAMILY, 10))
     style.configure("TLabel", padding=2, font=(FONT_FAMILY, 10), background=BG, foreground=FG)
-    style.configure("TEntry", padding=4, relief="solid", borderwidth=1, foreground=FG, fieldbackground=ENTRY_BG)
-    style.configure("Error.TEntry", padding=4, relief="solid", borderwidth=1, foreground=FG, fieldbackground=ERROR_BG)
+    style.configure("TEntry", padding=4, relief="solid", borderwidth=1, foreground=ENTRY_FG, fieldbackground=ENTRY_BG)
+    style.configure("Error.TEntry", padding=4, relief="solid", borderwidth=1, foreground=ENTRY_FG, fieldbackground=ERROR_BG)
     style.configure("TCheckbutton", background=BG, foreground=FG, font=(FONT_FAMILY, 10))
     style.configure("Info.TLabel", background=BG, foreground="#cbd5e1", font=(FONT_FAMILY, 9))
     style.configure("Group.TLabelframe", background=BG, foreground=FG, font=(FONT_FAMILY, 10, "bold"))
@@ -63,33 +64,28 @@ def launch_gui(run_job_func, version):
     state = {
         "in": tk.StringVar(),
         "rules": tk.StringVar(),
-        "out": tk.StringVar(),
-        "dry": tk.BooleanVar(value=False),
+        "outdir": tk.StringVar(),
         "status": tk.StringVar(value="Listo para procesar."),
     }
-    full_paths = {"in": "", "rules": "", "out": ""}
+    full_paths = {"in": "", "rules": "", "outdir": ""}
     entries = {}
 
     def set_path(target, path):
         full_paths[target] = path
         state[target].set(_truncate_path(path))
         entries[target].tooltip = path
-        if target == "in" and not full_paths["out"]:
-            full_paths["out"] = path + "_MOD"
-            state["out"].set(_truncate_path(full_paths["out"]))
+        if target == "in" and not full_paths["outdir"]:
+            full_paths["outdir"] = os.path.dirname(path)
+            state["outdir"].set(_truncate_path(full_paths["outdir"]))
 
     def browse(target, save=False):
-        path = (
-            filedialog.asksaveasfilename(title="Selecciona archivo de salida", initialfile="EXPORT_mod.txt")
-            if save
-            else filedialog.askopenfilename(title="Selecciona archivo")
-        )
+        path = filedialog.askdirectory(title="Selecciona carpeta de salida") if save else filedialog.askopenfilename(title="Selecciona archivo")
         if path:
             set_path(target, path)
 
     def validate():
         valid = True
-        for key in ("in", "rules", "out"):
+        for key in ("in", "rules", "outdir"):
             entries[key].configure(style="TEntry")
         if not full_paths["in"] or not os.path.isfile(full_paths["in"]):
             entries["in"].configure(style="Error.TEntry")
@@ -97,8 +93,8 @@ def launch_gui(run_job_func, version):
         if not full_paths["rules"] or not os.path.isfile(full_paths["rules"]):
             entries["rules"].configure(style="Error.TEntry")
             valid = False
-        if not full_paths["out"]:
-            entries["out"].configure(style="Error.TEntry")
+        if not full_paths["outdir"]:
+            entries["outdir"].configure(style="Error.TEntry")
             valid = False
         return valid
 
@@ -112,17 +108,16 @@ def launch_gui(run_job_func, version):
             progress.grid(row=5, column=1, pady=6)
             progress.start(10)
             root.update_idletasks()
-            counters, log_path = run_job_func(
+            counters, outfile, log_path = run_job_func(
                 full_paths["in"],
                 full_paths["rules"],
-                full_paths["out"],
-                dry_run=state["dry"].get(),
+                full_paths["outdir"],
                 verbose=False,
             )
             msg = (
                 f"Proceso completado. Adds={counters['adds']} Deletes={counters['deletes']} "
                 f"Replaces={counters['replaces']} Warns={counters['warns']}.\n"
-                f"Salida: {full_paths['out']}\nLog: {log_path}"
+                f"Salida: {outfile}\nLog: {log_path}"
             )
             state["status"].set(msg)
         except Exception as ex:  # noqa: BLE001
@@ -147,13 +142,7 @@ def launch_gui(run_job_func, version):
 
     add_row(0, "Archivo de Roles Existente (Base)", "in", "📂")
     add_row(1, "Archivo de Actualización/Reglas (.CSV)", "rules", "📂")
-    add_row(2, "Archivo de Roles Actualizados (Salida)", "out", "💾", save=True)
-
-    # Modo simulación
-    tk.Label(root, text="❓", bg=BG, fg=FG, font=(FONT_FAMILY, 12)).grid(row=1, column=0, sticky="e", padx=(12, 0))
-    ttk.Checkbutton(root, text="Modo de Simulación (solo verificar cambios)", variable=state["dry"]).grid(
-        row=1, column=1, sticky="w", pady=(4, 0)
-    )
+    add_row(2, "Carpeta de salida", "outdir", "📂", save=True)
 
     status_frame = ttk.Frame(root, padding=8)
     status_frame.grid(row=2, column=0, columnspan=3, sticky="ew")

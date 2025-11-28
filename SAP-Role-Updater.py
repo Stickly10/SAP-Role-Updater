@@ -8,12 +8,13 @@
 #   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
 #   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (40 chars each, padded).
 # Usage example:
-#   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
+#   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
 
-__version__ = "1.3.2"
+__version__ = "1.3.4"
 
 import argparse
 import csv
+import os
 import re
 import sys
 from collections import defaultdict
@@ -168,7 +169,18 @@ def append_replace_logs(befores, afters, log_rows):
         log_rows.append(["REPLACE", b, a])
 
 
-def run_job(infile, rules_path, outfile, dry_run=False, verbose=False):
+def build_output_paths(infile, outdir):
+    base = os.path.basename(infile)
+    name, ext = os.path.splitext(base)
+    if not ext:
+        ext = ""
+    outfile = os.path.join(outdir, f"{name}_MOD{ext}")
+    log_path = os.path.join(outdir, f"{name}_MOD_LOG.csv")
+    return outfile, log_path
+
+
+def run_job(infile, rules_path, outdir, verbose=False):
+    outfile, log_path = build_output_paths(infile, outdir)
     lines, enc = read_text(infile)
     entries = build_entries(lines)
     rules = parse_rules(rules_path)
@@ -197,14 +209,12 @@ def run_job(infile, rules_path, outfile, dry_run=False, verbose=False):
         elif not e.get("marked_deleted"):
             out_lines.append(e["raw"])
 
-    if not dry_run:
-        with open(outfile, "w", encoding=enc, newline="\n") as f:
-            for ln in out_lines:
-                f.write(ln + "\n")
+    with open(outfile, "w", encoding=enc, newline="\n") as f:
+        for ln in out_lines:
+            f.write(ln + "\n")
 
-    log_path = outfile + "_log.csv"
     with open(log_path, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, delimiter="\t")
         w.writerow(["action", "before", "after"])
         for a, b, c in log_rows:
             w.writerow(
@@ -215,7 +225,7 @@ def run_job(infile, rules_path, outfile, dry_run=False, verbose=False):
                 ]
             )
 
-    return counters, log_path
+    return counters, outfile, log_path
 
 
 # ---------------- parse entries ----------------
@@ -529,8 +539,7 @@ def main():
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("--in", dest="infile", help="Input role export file")
     ap.add_argument("--rules", dest="rules", help="Rules CSV")
-    ap.add_argument("--out", dest="outfile", help="Output role export file (modified)")
-    ap.add_argument("--dry-run", dest="dry_run", action="store_true", default=False)
+    ap.add_argument("--outdir", dest="outdir", help="Output directory for files")
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False)
     ap.add_argument("--gui", dest="gui", action="store_true", help="Launch simple GUI and ignore CLI paths")
     args = ap.parse_args()
@@ -538,25 +547,21 @@ def main():
     if args.gui:
         launch_gui(run_job, __version__)
         return
-    if not (args.infile and args.rules and args.outfile):
-        ap.error("When not using --gui, --in, --rules, and --out are required.")
+    if not (args.infile and args.rules and args.outdir):
+        ap.error("When not using --gui, --in, --rules, and --outdir are required.")
 
     try:
         counters, log_path = run_job(
             infile=args.infile,
             rules_path=args.rules,
-            outfile=args.outfile,
-            dry_run=args.dry_run,
+            outdir=args.outdir,
             verbose=args.verbose,
         )
 
         if args.verbose:
             print(f"[rules] processed")
-        print(f"[end] {'Dry-run, no file written.' if args.dry_run else 'Written: ' + args.outfile}")
-        print(
-            f"[summary] adds={counters['adds']} deletes={counters['deletes']} "
-            f"replaces={counters['replaces']} warns={counters['warns']}"
-        )
+        print(f"[end] Written to {args.outdir}")
+        print(f"[summary] adds={counters['adds']} deletes={counters['deletes']} replaces={counters['replaces']} warns={counters['warns']}")
         print(f"[log] {log_path}")
     except CodedError as ce:
         emit_error(ce)
