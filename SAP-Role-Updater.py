@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.2.7"
+__version__ = "1.3.0"
 
 import argparse
 import csv
@@ -165,6 +165,115 @@ def append_replace_logs(befores, afters, log_rows):
         b = befores[min(i, len(befores) - 1)] if befores else ""
         a = afters[min(i, len(afters) - 1)] if afters else ""
         log_rows.append(["REPLACE", b, a])
+
+
+def run_job(infile, rules_path, outfile, dry_run=False, verbose=False):
+    lines, enc = read_text(infile)
+    entries = build_entries(lines)
+    rules = parse_rules(rules_path)
+    counters_used = build_counters_state(entries)
+
+    counters = {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0}
+    log_rows = []
+
+    for r in rules:
+        if r["action"] != "replace_list":
+            counters["warns"] += 1
+            log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
+            continue
+        if r["table"] == "AGR_1251":
+            handle_rule_1251(r, entries, counters_used, log_rows, counters)
+        elif r["table"] == "AGR_1252":
+            handle_rule_1252(r, entries, counters_used, log_rows, counters)
+        else:
+            counters["warns"] += 1
+            log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
+
+    out_lines = []
+    for i, e in enumerate(entries):
+        if e is None:
+            out_lines.append(lines[i])  # original non-target line
+        elif not e.get("marked_deleted"):
+            out_lines.append(e["raw"])
+
+    if not dry_run:
+        with open(outfile, "w", encoding=enc, newline="\n") as f:
+            for ln in out_lines:
+                f.write(ln + "\n")
+
+    log_path = outfile + "_log.csv"
+    with open(log_path, "w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["action", "before", "after"])
+        for a, b, c in log_rows:
+            w.writerow(
+                [
+                    a,
+                    (b or "").replace("\r", " ").replace("\n", " "),
+                    (c or "").replace("\r", " ").replace("\n", " "),
+                ]
+            )
+
+    return counters, log_path
+
+
+def launch_gui():
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+
+    root = tk.Tk()
+    root.title(f"SAP Role Updater {__version__}")
+    root.resizable(False, False)
+
+    state = {"in": tk.StringVar(), "rules": tk.StringVar(), "out": tk.StringVar(), "dry": tk.BooleanVar(value=False)}
+
+    def browse(target, save=False):
+        if save:
+            path = filedialog.asksaveasfilename(title="Select output file", initialfile="EXPORT_mod.txt")
+        else:
+            path = filedialog.askopenfilename(title="Select file")
+        if path:
+            state[target].set(path)
+            if target == "in" and not state["out"].get():
+                state["out"].set(path + "_MOD")
+
+    def run():
+        infile = state["in"].get()
+        rules_path = state["rules"].get()
+        outfile = state["out"].get()
+        if not (infile and rules_path and outfile):
+            messagebox.showerror("Error", "Selecciona archivo base, reglas y salida.")
+            return
+        try:
+            counters, log_path = run_job(infile, rules_path, outfile, dry_run=state["dry"].get(), verbose=False)
+            msg = f"Listo.\nAdds={counters['adds']} Deletes={counters['deletes']} Replaces={counters['replaces']} Warns={counters['warns']}\nLog: {log_path}"
+            messagebox.showinfo("Éxito", msg)
+        except CodedError as ce:
+            emit_error(ce)
+            messagebox.showerror("Error", f"{ce.code}: {ce.message}\n{ce.details or ''}")
+        except Exception as ex:
+            wrapped = CodedError("SYS-500", "SEV1", "Unhandled exception", details=str(ex), err_type="System", origin="gui")
+            emit_error(wrapped)
+            messagebox.showerror("Error", f"{wrapped.code}: {wrapped.message}\n{wrapped.details}")
+
+    pad = {"padx": 8, "pady": 4}
+    tk.Label(root, text="Archivo base").grid(row=0, column=0, sticky="w", **pad)
+    tk.Entry(root, textvariable=state["in"], width=60).grid(row=0, column=1, **pad)
+    tk.Button(root, text="Buscar", command=lambda: browse("in")).grid(row=0, column=2, **pad)
+
+    tk.Label(root, text="Archivo reglas").grid(row=1, column=0, sticky="w", **pad)
+    tk.Entry(root, textvariable=state["rules"], width=60).grid(row=1, column=1, **pad)
+    tk.Button(root, text="Buscar", command=lambda: browse("rules")).grid(row=1, column=2, **pad)
+
+    tk.Label(root, text="Archivo salida").grid(row=2, column=0, sticky="w", **pad)
+    tk.Entry(root, textvariable=state["out"], width=60).grid(row=2, column=1, **pad)
+    tk.Button(root, text="Guardar como", command=lambda: browse("out", save=True)).grid(row=2, column=2, **pad)
+
+    tk.Checkbutton(root, text="Dry-run (no escribe archivo)", variable=state["dry"]).grid(row=3, column=1, sticky="w", **pad)
+
+    tk.Button(root, text="Procesar", command=run, width=15).grid(row=4, column=1, pady=10)
+
+    root.mainloop()
 
 
 # ---------------- parse entries ----------------
@@ -476,62 +585,31 @@ def main():
         description="Modify AGR_1251 and AGR_1252 fixed-width exports based on a single rules CSV (replace_list)."
     )
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    ap.add_argument("--in", dest="infile", required=True, help="Input role export file")
-    ap.add_argument("--rules", dest="rules", required=True, help="Rules CSV")
-    ap.add_argument("--out", dest="outfile", required=True, help="Output role export file (modified)")
+    ap.add_argument("--in", dest="infile", help="Input role export file")
+    ap.add_argument("--rules", dest="rules", help="Rules CSV")
+    ap.add_argument("--out", dest="outfile", help="Output role export file (modified)")
     ap.add_argument("--dry-run", dest="dry_run", action="store_true", default=False)
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False)
+    ap.add_argument("--gui", dest="gui", action="store_true", help="Launch simple GUI and ignore CLI paths")
     args = ap.parse_args()
 
+    if args.gui:
+        launch_gui()
+        return
+    if not (args.infile and args.rules and args.outfile):
+        ap.error("When not using --gui, --in, --rules, and --out are required.")
+
     try:
-        lines, enc = read_text(args.infile)
-        entries = build_entries(lines)
-        rules = parse_rules(args.rules)
-        counters_used = build_counters_state(entries)
-
-        counters = {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0}
-        log_rows = []
-
-        for r in rules:
-            if r["action"] != "replace_list":
-                counters["warns"] += 1
-                log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
-                continue
-            if r["table"] == "AGR_1251":
-                handle_rule_1251(r, entries, counters_used, log_rows, counters)
-            elif r["table"] == "AGR_1252":
-                handle_rule_1252(r, entries, counters_used, log_rows, counters)
-            else:
-                counters["warns"] += 1
-                log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
-
-        out_lines = []
-        for i, e in enumerate(entries):
-            if e is None:
-                out_lines.append(lines[i])  # original non-target line
-            elif not e.get("marked_deleted"):
-                out_lines.append(e["raw"])
-
-        if not args.dry_run:
-            with open(args.outfile, "w", encoding=enc, newline="\n") as f:
-                for ln in out_lines:
-                    f.write(ln + "\n")
-
-        log_path = args.outfile + "_log.csv"
-        with open(log_path, "w", encoding="utf-8", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["action", "before", "after"])
-            for a, b, c in log_rows:
-                w.writerow(
-                    [
-                        a,
-                        (b or "").replace("\r", " ").replace("\n", " "),
-                        (c or "").replace("\r", " ").replace("\n", " "),
-                    ]
-                )
+        counters, log_path = run_job(
+            infile=args.infile,
+            rules_path=args.rules,
+            outfile=args.outfile,
+            dry_run=args.dry_run,
+            verbose=args.verbose,
+        )
 
         if args.verbose:
-            print(f"[rules] {len(rules)} processed")
+            print(f"[rules] processed")
         print(f"[end] {'Dry-run, no file written.' if args.dry_run else 'Written: ' + args.outfile}")
         print(
             f"[summary] adds={counters['adds']} deletes={counters['deletes']} "
