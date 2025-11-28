@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --out EXPORT_mod.txt
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 import argparse
 import csv
@@ -18,6 +18,7 @@ import re
 import sys
 from collections import defaultdict
 from error_handler import CodedError, emit_error, raise_error
+from gui_app import launch_gui
 
 # ---------------- widths and regex ----------------
 
@@ -215,65 +216,6 @@ def run_job(infile, rules_path, outfile, dry_run=False, verbose=False):
             )
 
     return counters, log_path
-
-
-def launch_gui():
-    import tkinter as tk
-    from tkinter import filedialog, messagebox
-
-    root = tk.Tk()
-    root.title(f"SAP Role Updater {__version__}")
-    root.resizable(False, False)
-
-    state = {"in": tk.StringVar(), "rules": tk.StringVar(), "out": tk.StringVar(), "dry": tk.BooleanVar(value=False)}
-
-    def browse(target, save=False):
-        if save:
-            path = filedialog.asksaveasfilename(title="Select output file", initialfile="EXPORT_mod.txt")
-        else:
-            path = filedialog.askopenfilename(title="Select file")
-        if path:
-            state[target].set(path)
-            if target == "in" and not state["out"].get():
-                state["out"].set(path + "_MOD")
-
-    def run():
-        infile = state["in"].get()
-        rules_path = state["rules"].get()
-        outfile = state["out"].get()
-        if not (infile and rules_path and outfile):
-            messagebox.showerror("Error", "Selecciona archivo base, reglas y salida.")
-            return
-        try:
-            counters, log_path = run_job(infile, rules_path, outfile, dry_run=state["dry"].get(), verbose=False)
-            msg = f"Listo.\nAdds={counters['adds']} Deletes={counters['deletes']} Replaces={counters['replaces']} Warns={counters['warns']}\nLog: {log_path}"
-            messagebox.showinfo("Éxito", msg)
-        except CodedError as ce:
-            emit_error(ce)
-            messagebox.showerror("Error", f"{ce.code}: {ce.message}\n{ce.details or ''}")
-        except Exception as ex:
-            wrapped = CodedError("SYS-500", "SEV1", "Unhandled exception", details=str(ex), err_type="System", origin="gui")
-            emit_error(wrapped)
-            messagebox.showerror("Error", f"{wrapped.code}: {wrapped.message}\n{wrapped.details}")
-
-    pad = {"padx": 8, "pady": 4}
-    tk.Label(root, text="Archivo base").grid(row=0, column=0, sticky="w", **pad)
-    tk.Entry(root, textvariable=state["in"], width=60).grid(row=0, column=1, **pad)
-    tk.Button(root, text="Buscar", command=lambda: browse("in")).grid(row=0, column=2, **pad)
-
-    tk.Label(root, text="Archivo reglas").grid(row=1, column=0, sticky="w", **pad)
-    tk.Entry(root, textvariable=state["rules"], width=60).grid(row=1, column=1, **pad)
-    tk.Button(root, text="Buscar", command=lambda: browse("rules")).grid(row=1, column=2, **pad)
-
-    tk.Label(root, text="Archivo salida").grid(row=2, column=0, sticky="w", **pad)
-    tk.Entry(root, textvariable=state["out"], width=60).grid(row=2, column=1, **pad)
-    tk.Button(root, text="Guardar como", command=lambda: browse("out", save=True)).grid(row=2, column=2, **pad)
-
-    tk.Checkbutton(root, text="Dry-run (no escribe archivo)", variable=state["dry"]).grid(row=3, column=1, sticky="w", **pad)
-
-    tk.Button(root, text="Procesar", command=run, width=15).grid(row=4, column=1, pady=10)
-
-    root.mainloop()
 
 
 # ---------------- parse entries ----------------
@@ -594,7 +536,7 @@ def main():
     args = ap.parse_args()
 
     if args.gui:
-        launch_gui()
+        launch_gui(run_job, __version__)
         return
     if not (args.infile and args.rules and args.outfile):
         ap.error("When not using --gui, --in, --rules, and --out are required.")
