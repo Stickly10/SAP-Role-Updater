@@ -11,6 +11,7 @@ BG = "#282C34"
 FG = "#e6e8eb"
 ENTRY_BG = "#ffffff"
 ENTRY_FG = "#111827"
+STATUS_BG = "#1f2329"
 ERROR_BG = "#3c1f20"
 FONT_FAMILY = "Segoe UI"
 
@@ -41,6 +42,7 @@ def _apply_modern_theme(root):
     style.configure("Group.TLabelframe.Label", background=BG, foreground=FG, font=(FONT_FAMILY, 10, "bold"))
     style.configure("Status.TLabel", background=BG, foreground=FG, font=(FONT_FAMILY, 10, "bold"))
     style.configure("Warn.TLabel", background=BG, foreground="#fbbf24", font=(FONT_FAMILY, 10))
+    style.configure("StatusBox.TLabel", background=STATUS_BG, foreground=FG, font=(FONT_FAMILY, 10))
     root.configure(bg=BG)
 
 
@@ -68,6 +70,7 @@ def launch_gui(run_job_func, version):
         "status": tk.StringVar(value="Listo para procesar."),
     }
     full_paths = {"in": "", "rules": "", "outdir": ""}
+    last_out = {"outfile": "", "log": ""}
     entries = {}
 
     def set_path(target, path):
@@ -120,6 +123,8 @@ def launch_gui(run_job_func, version):
                 f"Salida: {outfile}\nLog: {log_path}"
             )
             state["status"].set(msg)
+            last_out["outfile"], last_out["log"] = outfile, log_path
+            messagebox.showinfo("Éxito", "Proceso completado correctamente.")
         except Exception as ex:  # noqa: BLE001
             state["status"].set(f"Error: {ex}")
             messagebox.showerror("Error", str(ex))
@@ -146,9 +151,27 @@ def launch_gui(run_job_func, version):
 
     status_frame = ttk.Frame(root, padding=8)
     status_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
-    ttk.Label(status_frame, textvariable=state["status"], style="Info.TLabel", wraplength=520).grid(
-        row=0, column=0, sticky="w"
+    ttk.Label(status_frame, textvariable=state["status"], style="StatusBox.TLabel", wraplength=540, anchor="w").grid(
+        row=0, column=0, columnspan=3, sticky="ew"
     )
+
+    def open_path(path):
+        if not path:
+            messagebox.showwarning("Aviso", "Nada para abrir todavía.")
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                import subprocess, platform
+
+                opener = "open" if platform.system() == "Darwin" else "xdg-open"
+                subprocess.Popen([opener, path])
+        except Exception as ex:  # noqa: BLE001
+            messagebox.showerror("Error", f"No se pudo abrir: {ex}")
+
+    ttk.Button(status_frame, text="Abrir carpeta salida", command=lambda: open_path(os.path.dirname(last_out.get("outfile","")))).grid(row=1, column=0, sticky="w", pady=(6,0))
+    ttk.Button(status_frame, text="Abrir log", command=lambda: open_path(last_out.get("log",""))).grid(row=1, column=1, sticky="w", pady=(6,0))
 
     ttk.Button(root, text="⚙️ Procesar", style="Accent.TButton", command=run).grid(
         row=4, column=0, columnspan=3, pady=10

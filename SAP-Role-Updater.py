@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
 
-__version__ = "1.3.4"
+__version__ = "1.3.5"
 
 import argparse
 import csv
@@ -224,6 +224,9 @@ def run_job(infile, rules_path, outdir, verbose=False):
                     (c or "").replace("\r", " ").replace("\n", " "),
                 ]
             )
+
+    # liberar referencias pesadas
+    del lines, entries, rules, counters_used, log_rows, out_lines
 
     return counters, outfile, log_path
 
