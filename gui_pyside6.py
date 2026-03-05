@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """PySide6 GUI for SAP Role Updater."""
 
 from __future__ import annotations
@@ -171,6 +171,8 @@ class MainWindow(QMainWindow):
         self._running_preview = False
         self.base_ok = False
         self.rules_ok = False
+        self.rules_has_validation_errors = False
+        self.last_result_has_validation_errors = False
         self.setWindowTitle(f"SAP Role Updater {version}")
         self.resize(1300, 860)
         self._build_ui()
@@ -188,10 +190,10 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-size: 20px; font-weight: 700;")
         header_layout.addWidget(title)
         steps = QHBoxLayout()
-        self.step_base = QLabel("① Base")
-        self.step_rules = QLabel("② Reglas")
-        self.step_out = QLabel("③ Salida")
-        self.step_run = QLabel("④ Validar/Procesar")
+        self.step_base = QLabel("â‘  Base")
+        self.step_rules = QLabel("â‘¡ Reglas")
+        self.step_out = QLabel("â‘¢ Salida")
+        self.step_run = QLabel("â‘£ Validar/Procesar")
         for w in (self.step_base, self.step_rules, self.step_out, self.step_run):
             w.setStyleSheet("padding: 4px 10px; border: 1px solid #374151; border-radius: 8px;")
             steps.addWidget(w)
@@ -203,19 +205,19 @@ class MainWindow(QMainWindow):
             layout,
             "Paso 1: Archivo Base (PFCG Mass Download)",
             self._pick_base,
-            "📂",
+            "ðŸ“‚",
         )
         self.rules_edit, self.rules_detail, self.rules_indicator = self._add_path_group(
             layout,
             "Paso 2: Reglas (CSV AGR_1251/AGR_1252)",
             self._pick_rules,
-            "📂",
+            "ðŸ“‚",
         )
         self.out_edit, self.out_detail, self.out_indicator = self._add_path_group(
             layout,
             "Paso 3: Carpeta de salida",
             self._pick_outdir,
-            "📁",
+            "ðŸ“",
         )
 
         actions = QHBoxLayout()
@@ -270,7 +272,7 @@ class MainWindow(QMainWindow):
         detail = QLabel("Sin seleccionar.")
         detail.setStyleSheet("color: #9CA3AF;")
         detail.setWordWrap(True)
-        indicator = QLabel("⚠")
+        indicator = QLabel("âš ")
         indicator.setStyleSheet("font-size: 18px;")
         lay.addWidget(edit, 0, 0)
         lay.addWidget(btn, 0, 1)
@@ -292,7 +294,7 @@ class MainWindow(QMainWindow):
             counters.addWidget(w)
         counters.addStretch(1)
         lay.addLayout(counters)
-        self.lbl_summary_state = QLabel("Sin ejecución.")
+        self.lbl_summary_state = QLabel("Sin ejecuciÃ³n.")
         self.lbl_summary_state.setStyleSheet("font-size: 16px; font-weight: 700;")
         lay.addWidget(self.lbl_summary_state)
         self.lbl_base_stats = QLabel("Base: -")
@@ -383,6 +385,8 @@ class MainWindow(QMainWindow):
             return
         self.rules_path = path
         self.rules_edit.setText(path)
+        self.last_result = None
+        self.last_result_has_validation_errors = False
         self._analyze_rules()
         self._refresh_guardrails()
 
@@ -412,13 +416,13 @@ class MainWindow(QMainWindow):
                 elif e["table_type"] == "AGR_1252":
                     c1252 += 1
             self.base_detail.setText(
-                f"encoding={enc} | total_líneas={len(lines)} | roles_únicos={len(roles)} | AGR_1251={c1251} | AGR_1252={c1252}"
+                f"encoding={enc} | total_lÃ­neas={len(lines)} | roles_Ãºnicos={len(roles)} | AGR_1251={c1251} | AGR_1252={c1252}"
             )
             self.base_ok = True
-            self.base_indicator.setText("✅")
+            self.base_indicator.setText("âœ…")
         except Exception as ex:  # noqa: BLE001
             self.base_ok = False
-            self.base_indicator.setText("⚠")
+            self.base_indicator.setText("âš ")
             self.base_detail.setText(f"Error leyendo base: {ex}")
         self._refresh_stepper()
 
@@ -426,24 +430,29 @@ class MainWindow(QMainWindow):
         try:
             _, meta = parse_rules(self.rules_path, return_meta=True)
             rs = meta.get("rules_stats", {})
+            val_errs = int(rs.get("validation_errors", 0))
+            self.rules_has_validation_errors = bool(meta.get("has_validation_errors", False))
             tables = ", ".join(rs.get("tables_touched", [])) or "-"
             self.rules_detail.setText(
-                "delimiter={delim} | filas={rows} | roles_únicos={roles} | tablas={tables} | columnas_ok={cols}".format(
+                "delimiter={delim} | filas={rows} | roles_unicos={roles} | tablas={tables} | columnas_ok={cols} | errores_validacion={errs}".format(
                     delim=meta.get("delimiter_detected", ""),
                     rows=rs.get("rules_loaded", 0),
                     roles=rs.get("roles_unique", 0),
                     tables=tables,
                     cols=rs.get("required_columns_ok", False),
+                    errs=val_errs,
                 )
             )
             self.rules_ok = True
-            self.rules_indicator.setText("✅")
+            self.rules_indicator.setText("⚠" if self.rules_has_validation_errors else "✅")
         except CodedError as ce:
             self.rules_ok = False
+            self.rules_has_validation_errors = True
             self.rules_indicator.setText("⚠")
             self.rules_detail.setText(f"{ce.code}: {ce.message}")
         except Exception as ex:  # noqa: BLE001
             self.rules_ok = False
+            self.rules_has_validation_errors = True
             self.rules_indicator.setText("⚠")
             self.rules_detail.setText(f"Error leyendo reglas: {ex}")
         self._refresh_stepper()
@@ -451,12 +460,12 @@ class MainWindow(QMainWindow):
     def _refresh_output_details(self):
         if not self.base_path or not self.outdir_path:
             self.out_detail.setText("Selecciona base + carpeta salida para ver nombres esperados.")
-            self.out_indicator.setText("⚠")
+            self.out_indicator.setText("âš ")
             return
         out_file, log_file = build_output_paths(self.base_path, self.outdir_path)
         self.out_detail.setText(f"Salida esperada: {os.path.basename(out_file)} | Log: {os.path.basename(log_file)}")
         writable = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
-        self.out_indicator.setText("✅" if writable else "⚠")
+        self.out_indicator.setText("âœ…" if writable else "âš ")
 
     def _refresh_guardrails(self):
         self._refresh_output_details()
@@ -470,19 +479,25 @@ class MainWindow(QMainWindow):
 
     def _refresh_stepper(self):
         base_ok = self.base_ok and os.path.isfile(self.base_path)
-        rules_ok = self.rules_ok and os.path.isfile(self.rules_path)
+        rules_ok = self.rules_ok and os.path.isfile(self.rules_path) and not self.rules_has_validation_errors
         out_ok = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
         run_ok = self.last_result is not None and self.last_result.get("status") == "ok"
-        self.step_base.setText(f"① Base {'✅' if base_ok else '⚠'}")
-        self.step_rules.setText(f"② Reglas {'✅' if rules_ok else '⚠'}")
-        self.step_out.setText(f"③ Salida {'✅' if out_ok else '⚠'}")
-        self.step_run.setText(f"④ Validar/Procesar {'✅' if run_ok else '⏳'}")
+        self.step_base.setText(f"1 Base {'✅' if base_ok else '⚠'}")
+        self.step_rules.setText(f"2 Reglas {'✅' if rules_ok else '⚠'}")
+        self.step_out.setText(f"3 Salida {'✅' if out_ok else '⚠'}")
+        self.step_run.setText(f"4 Validar/Procesar {'✅' if run_ok else '⏳'}")
 
     def _can_validate(self):
         return os.path.isfile(self.base_path) and os.path.isfile(self.rules_path) and self.base_ok and self.rules_ok
 
     def _can_process(self):
-        return self._can_validate() and os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
+        return (
+            self._can_validate()
+            and os.path.isdir(self.outdir_path)
+            and os.access(self.outdir_path, os.W_OK)
+            and not self.rules_has_validation_errors
+            and not self.last_result_has_validation_errors
+        )
 
     def _confirm_warns_before_process(self):
         if not self.last_result:
@@ -493,7 +508,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning)
         box.setWindowTitle("Advertencias detectadas")
-        box.setText(f"Hay {warns} advertencias. Se recomienda corregir antes de cargar a SAP. ¿Deseas continuar?")
+        box.setText(f"Hay {warns} advertencias. Se recomienda corregir antes de cargar a SAP. Â¿Deseas continuar?")
         box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Yes)
         box.setDefaultButton(QMessageBox.Cancel)
         cancel_btn = box.button(QMessageBox.Cancel)
@@ -508,7 +523,7 @@ class MainWindow(QMainWindow):
         if self._thread is not None:
             return
         if preview and not self._can_validate():
-            QMessageBox.warning(self, "Validación", "Selecciona base y reglas válidas antes de validar.")
+            QMessageBox.warning(self, "ValidaciÃ³n", "Selecciona base y reglas vÃ¡lidas antes de validar.")
             return
         if not preview and not self._can_process():
             QMessageBox.warning(self, "Procesar", "Selecciona base, reglas y carpeta de salida escribible.")
@@ -554,7 +569,7 @@ class MainWindow(QMainWindow):
     def _cancel_job(self):
         if self._worker:
             self._worker.request_cancel()
-            self.status_label.setText("Cancelación solicitada...")
+            self.status_label.setText("CancelaciÃ³n solicitada...")
             self.btn_cancel.setEnabled(False)
 
     def _on_worker_progress(self, current, total, message, percent):
@@ -569,6 +584,12 @@ class MainWindow(QMainWindow):
         status = result.get("status", "error")
         counters = result.get("counters", {})
         warns = int(counters.get("warns", 0))
+        self.last_result_has_validation_errors = bool(result.get("has_validation_errors", False))
+        if not self.last_result_has_validation_errors:
+            for item in result.get("warns_struct", []):
+                if item.get("severity") in ("SEV1", "SEV2"):
+                    self.last_result_has_validation_errors = True
+                    break
         self.lbl_adds.setText(f"Adds: {counters.get('adds', 0)}")
         self.lbl_deletes.setText(f"Deletes: {counters.get('deletes', 0)}")
         self.lbl_replaces.setText(f"Replaces: {counters.get('replaces', 0)}")
@@ -577,7 +598,7 @@ class MainWindow(QMainWindow):
         base_stats = result.get("base_stats", {})
         rules_stats = result.get("rules_stats", {})
         self.lbl_base_stats.setText(
-            "Base: encoding={enc}, líneas={lines}, roles={roles}, AGR_1251={c1}, AGR_1252={c2}".format(
+            "Base: encoding={enc}, lÃ­neas={lines}, roles={roles}, AGR_1251={c1}, AGR_1252={c2}".format(
                 enc=result.get("encoding_detected", ""),
                 lines=base_stats.get("total_lines", 0),
                 roles=base_stats.get("roles_unique", 0),
@@ -608,7 +629,9 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Error.")
             QMessageBox.critical(self, "Error", msg)
         else:
-            if warns > 0:
+            if self.last_result_has_validation_errors:
+                self.lbl_summary_state.setText("❌ Reglas inválidas: corrige RULES.csv antes de procesar")
+            elif warns > 0:
                 self.lbl_summary_state.setText("⚠ Revisar advertencias antes de cargar a SAP")
             else:
                 self.lbl_summary_state.setText("✅ Listo (sin advertencias)")
@@ -683,3 +706,4 @@ def launch_gui(version):
     if owns_app:
         return app.exec()
     return 0
+

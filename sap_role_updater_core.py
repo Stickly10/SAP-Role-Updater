@@ -195,6 +195,7 @@ def _empty_result(status="ok"):
         "counters": {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0},
         "outfile": "",
         "log_path": "",
+        "has_validation_errors": False,
         "warns_details": [],
         "warns_struct": [],
         "sample_rows": [],
@@ -291,7 +292,31 @@ def run_job_ex(
         rules, rules_meta = parse_rules(rules_path, return_meta=True)
         res["delimiter_detected"] = rules_meta["delimiter_detected"]
         res["rules_stats"] = rules_meta["rules_stats"]
+        res["has_validation_errors"] = bool(rules_meta.get("has_validation_errors", False))
         counters_used = build_counters_state(entries)
+
+        for issue in rules_meta.get("validation_issues", []):
+            res["counters"]["warns"] += 1
+            warn_emit(
+                issue.get("code", "VAL-INVALID-TABLE"),
+                issue.get("detail", ""),
+                severity=issue.get("severity", "SEV2"),
+                rule=issue,
+                legacy=True,
+            )
+            log_emit(issue.get("code", "VAL-INVALID-TABLE"), issue.get("detail", ""), "")
+
+        if res["has_validation_errors"] and not preview:
+            res["status"] = "error"
+            res["error"] = CodedError(
+                "VAL-INVALID-TABLE",
+                "SEV2",
+                "Rules file has validation errors in TABLE column",
+                details="Run preview/validation and fix RULES.csv before processing.",
+                err_type="Validation",
+                origin="run_job_ex",
+            )
+            return res
 
         if not preview:
             final_out_path, final_log_path = build_output_paths(infile, outdir)
@@ -319,8 +344,13 @@ def run_job_ex(
                 handle_rule_1252(r, entries, counters_used, rule_log_rows, res["counters"])
             else:
                 res["counters"]["warns"] += 1
-                warn_emit("WARN-TABLE", f"Ignored table={r['table']} (row={r['row']})", severity="SEV3", rule=r, legacy=True)
-                rule_log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
+                res["has_validation_errors"] = True
+                detail = (
+                    "Columna TABLE inválida o vacía. Esperado: AGR_1251 o AGR_1252. "
+                    f"Encontrado: '{r.get('table', '')}'. Corrige RULES.csv."
+                )
+                warn_emit("VAL-INVALID-TABLE", detail, severity="SEV2", rule=r, legacy=True)
+                rule_log_rows.append(["VAL-INVALID-TABLE", detail, ""])
 
             for action, before, after in rule_log_rows:
                 log_emit(action, before, after)
@@ -518,13 +548,16 @@ def parse_rules(path, return_meta=False):
     rules = []
     roles_touched = set()
     tables_touched = set()
+    validation_issues = []
+    valid_tables = {"AGR_1251", "AGR_1252"}
     for i, row in enumerate(reader, start=2):  # start at data row
         norm = {(k or "").strip().lstrip("\ufeff").lower(): (v or "").strip() for k, v in row.items()}
         # skip fully empty rows
         if all(v == "" for v in norm.values()):
             continue
         action = (norm.get("action", "replace_list") or "replace_list").lower()
-        table = (norm.get("table", "") or "").upper()
+        table_found = norm.get("table", "") or ""
+        table = table_found.upper().strip()
         mandt = norm.get("mandt", "")
         role = norm.get("agr_name", "") or norm.get("role", "")
         obj = norm.get("object", "") or norm.get("objct", "")
@@ -534,8 +567,24 @@ def parse_rules(path, return_meta=False):
         raw_high = norm.get("high", "")
         if role:
             roles_touched.add(role.strip())
-        if table:
-            tables_touched.add(table.strip())
+        if table_found:
+            tables_touched.add(table.strip() or table_found.strip())
+        if table not in valid_tables:
+            validation_issues.append(
+                {
+                    "code": "VAL-INVALID-TABLE",
+                    "severity": "SEV2",
+                    "row": i,
+                    "table": table_found,
+                    "role": role,
+                    "field": field,
+                    "detail": (
+                        "Columna TABLE inválida o vacía. Esperado: AGR_1251 o AGR_1252. "
+                        f"Encontrado: '{table_found}'. Corrige RULES.csv."
+                    ),
+                }
+            )
+            continue
         rules.append(
             {
                 "row": i,
@@ -558,10 +607,13 @@ def parse_rules(path, return_meta=False):
         "rules_stats": {
             "rows_total_including_header": len(txt),
             "rules_loaded": len(rules),
+            "validation_errors": len(validation_issues),
             "roles_unique": len(roles_touched),
             "tables_touched": sorted(tables_touched),
             "required_columns_ok": True,
         },
+        "validation_issues": validation_issues,
+        "has_validation_errors": bool(validation_issues),
     }
     if return_meta:
         return rules, meta
