@@ -112,24 +112,36 @@ def fmt_fixed(val: str, width: int) -> str:
     return s[:width] if len(s) > width else s.ljust(width)
 
 
-def split_list(raw_vals: str):
-    """Split LOW/LIST values on | or , and dedupe preserving order."""
-    parts = [p.strip() for p in re.split(r"[|,]", raw_vals or "") if p.strip()]
-    seen = set()
-    dedup = []
-    for v in parts:
-        if v not in seen:
-            seen.add(v)
-            dedup.append(v)
-    return dedup
+def split_sequence(raw_vals: str, keep_empty: bool = False):
+    """Split on | or , preserving item positions when requested.
+
+    keep_empty=True is used for HIGH to allow mixed rules such as:
+      LOW  = *|/*|0*|A*
+      HIGH = ||9*|Z*
+    """
+    txt = raw_vals or ""
+    if not txt.strip() and "|" not in txt and "," not in txt:
+        return []
+
+    if "|" in txt:
+        parts = txt.split("|")
+    elif "," in txt:
+        parts = txt.split(",")
+    else:
+        parts = [txt]
+
+    vals = [p.strip() for p in parts]
+    if keep_empty:
+        return vals
+    return [v for v in vals if v != ""]
 
 
 def split_pairs(raw_low: str, raw_high: str, rule_ctx: dict = None):
     """Pair LOW/HIGH lists; HIGH may be shorter/empty, defaults to ''.
     If both are empty, return a single empty pair to force replace with blanks.
     If HIGH is provided without LOW, raise a clear validation error."""
-    lows = split_list(raw_low)
-    highs = split_list(raw_high)
+    lows = split_sequence(raw_low, keep_empty=False)
+    highs = split_sequence(raw_high, keep_empty=True)
     if not lows and any(h != "" for h in highs):
         ctx = rule_ctx or {}
         raise_error(
@@ -349,13 +361,13 @@ def parse_rules(path):
     reader = csv.DictReader(txt, delimiter=delim)
     # Validar encabezados requeridos
     required_headers = {"action", "table", "mandt", "agr_name", "field"}
-    present = { (h or "").strip().lower() for h in (reader.fieldnames or []) }
+    present = {(h or "").strip().lstrip("\ufeff").lower() for h in (reader.fieldnames or [])}
     missing = sorted(required_headers - present)
     if missing:
         raise_error("VAL-003", "SEV2", f"Missing required columns: {', '.join(missing)}", origin="parse_rules", err_type="Validation")
     rules = []
     for i, row in enumerate(reader, start=2):  # start at data row
-        norm = { (k or "").strip().lower(): (v or "").strip() for k, v in row.items() }
+        norm = {(k or "").strip().lstrip("\ufeff").lower(): (v or "").strip() for k, v in row.items()}
         # skip fully empty rows
         if all(v == "" for v in norm.values()):
             continue
