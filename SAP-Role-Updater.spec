@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['SAP-Role-Updater.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=[],
