@@ -5,7 +5,11 @@ a = Analysis(
     ['main.py'],
     pathex=['src'],
     binaries=[],
-    datas=[('locales\\*.json', 'locales'), ('templates\\RULES_template.csv', 'templates')],
+    datas=[
+        ('locales\\*.json', 'locales'),
+        ('templates\\RULES_template.xlsx', 'templates'),
+        ('SAP-Role-Updater-Logo.ico', '.'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -36,4 +40,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version='version_info.txt',
+    icon='SAP-Role-Updater-Logo.ico',
 )

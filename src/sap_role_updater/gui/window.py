@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import csv
+import difflib
+import html
 import os
 import sys
 from pathlib import Path
@@ -11,10 +14,11 @@ from PySide6.QtCore import (
     QRegularExpression,
     QSettings,
     QSize,
+    Qt,
     QThread,
     QUrl,
 )
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -24,21 +28,25 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSplitter,
     QStyle,
     QTableView,
     QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from sap_role_updater.core.processor import (
     build_entries,
+    build_entry_indexes,
     build_output_paths,
     parse_entry_1251,
     parse_entry_1252,
@@ -50,7 +58,7 @@ from sap_role_updater.gui.models import AnimatedToggle, DictTableModel, JobWorke
 from sap_role_updater.gui.theme import ThemeManager
 from sap_role_updater.utils.error_handler import CodedError
 from sap_role_updater.utils.path_safety import is_unc_path, resolve_output_dir, resolve_regular_file
-from sap_role_updater.utils.settings import APP_SETTINGS_NAME, APP_SETTINGS_ORG, DEFAULT_LIMITS
+from sap_role_updater.utils.settings import APP_SETTINGS_NAME, APP_SETTINGS_ORG, DEFAULT_LIMITS, resource_path
 
 
 class MainWindow(QMainWindow):
@@ -77,7 +85,9 @@ class MainWindow(QMainWindow):
         self.rules_has_validation_errors = False
         self.last_result_has_validation_errors = False
         self._suppress_result_dialog = False
+        self._last_diff_pair = ("", "")
         self.setWindowTitle(t("app.window_title", version=version))
+        self._apply_window_icon()
         self.resize(1300, 860)
         self._build_ui()
         saved_theme = (self.settings.value("theme", "dark", type=str) or "dark").strip().lower()
@@ -90,6 +100,15 @@ class MainWindow(QMainWindow):
         self.retranslate_ui()
         self._refresh_stepper()
         self._refresh_guardrails()
+
+    def _apply_window_icon(self):
+        icon_path = resource_path("SAP-Role-Updater-Logo.ico")
+        if icon_path.exists():
+            icon = QIcon(str(icon_path))
+            self.setWindowIcon(icon)
+            app = QApplication.instance()
+            if app is not None:
+                app.setWindowIcon(icon)
 
     def _build_ui(self):
         root = QWidget(self)
@@ -191,6 +210,7 @@ class MainWindow(QMainWindow):
         self._build_summary_tab()
         self._build_warns_tab()
         self._build_changes_tab()
+        self._build_coverage_tab()
         self._configure_tables()
 
         footer = QHBoxLayout()
@@ -232,42 +252,55 @@ class MainWindow(QMainWindow):
         parent_layout.addWidget(box)
         return box, edit, detail, indicator, btn
 
+    def _make_metric_card(self, parent_layout, object_name):
+        card = QFrame()
+        card.setObjectName("metricCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        value = QLabel("0")
+        value.setObjectName("metricValue")
+        caption = QLabel("")
+        caption.setObjectName("metricCaption")
+        caption.setWordWrap(True)
+        card_layout.addWidget(value)
+        card_layout.addWidget(caption)
+        parent_layout.addWidget(card)
+        setattr(self, f"{object_name}_value", value)
+        setattr(self, f"{object_name}_caption", caption)
+
     def _build_summary_tab(self):
         tab = QWidget()
         lay = QVBoxLayout(tab)
-        counters = QHBoxLayout()
-        self.lbl_adds = QLabel()
-        self.lbl_deletes = QLabel()
-        self.lbl_replaces = QLabel()
-        self.lbl_warns = QLabel()
-        self.lbl_errors = QLabel()
-        self.lbl_warnings = QLabel()
-        summary_labels = (
-            self.lbl_adds,
-            self.lbl_deletes,
-            self.lbl_replaces,
-            self.lbl_warns,
-            self.lbl_errors,
-            self.lbl_warnings,
-        )
-        for w in summary_labels:
-            w.setStyleSheet("font-size: 18px; font-weight: 700;")
-            counters.addWidget(w)
-        counters.addStretch(1)
-        lay.addLayout(counters)
+        row1 = QHBoxLayout()
+        row2 = QHBoxLayout()
+        for object_name in ("adds", "deletes", "replaces"):
+            self._make_metric_card(row1, object_name)
+        for object_name in ("warns", "errors", "warnings"):
+            self._make_metric_card(row2, object_name)
+        lay.addLayout(row1)
+        lay.addLayout(row2)
+        self.summary_banner = QFrame()
+        self.summary_banner.setObjectName("stateBanner")
+        banner_layout = QHBoxLayout(self.summary_banner)
+        banner_layout.setContentsMargins(12, 10, 12, 10)
         self.lbl_summary_state = QLabel()
-        self.lbl_summary_state.setStyleSheet("font-size: 16px; font-weight: 700;")
-        lay.addWidget(self.lbl_summary_state)
+        self.lbl_summary_state.setObjectName("stateBannerLabel")
+        banner_layout.addWidget(self.lbl_summary_state)
+        banner_layout.addStretch(1)
+        lay.addWidget(self.summary_banner)
         self.lbl_base_stats = QLabel()
         self.lbl_rules_stats = QLabel()
+        self.lbl_coverage_stats = QLabel()
         self.lbl_hashes = QLabel()
         self.lbl_meta = QLabel()
         self.lbl_base_stats.setWordWrap(True)
         self.lbl_rules_stats.setWordWrap(True)
+        self.lbl_coverage_stats.setWordWrap(True)
         self.lbl_hashes.setWordWrap(True)
         self.lbl_meta.setWordWrap(True)
         lay.addWidget(self.lbl_base_stats)
         lay.addWidget(self.lbl_rules_stats)
+        lay.addWidget(self.lbl_coverage_stats)
         lay.addWidget(self.lbl_hashes)
         lay.addWidget(self.lbl_meta)
         lay.addStretch(1)
@@ -276,8 +309,14 @@ class MainWindow(QMainWindow):
     def _build_warns_tab(self):
         tab = QWidget()
         lay = QVBoxLayout(tab)
+        search_row = QHBoxLayout()
         self.warn_search = QLineEdit()
+        self.warn_search.setClearButtonEnabled(True)
         self.warn_search.setPlaceholderText(t("search.placeholder"))
+        self.warn_count = QLabel()
+        self.warn_count.setObjectName("subtleLabel")
+        search_row.addWidget(self.warn_search, 1)
+        search_row.addWidget(self.warn_count)
         self.warn_model = DictTableModel(
             [
                 ("code", "col.code"),
@@ -297,15 +336,25 @@ class MainWindow(QMainWindow):
         self.warn_table.setSortingEnabled(True)
         self.warn_table.horizontalHeader().setStretchLastSection(True)
         self.warn_table.setWordWrap(True)
-        lay.addWidget(self.warn_search)
+        self.warn_empty = QLabel()
+        self.warn_empty.setObjectName("subtleLabel")
+        self.warn_empty.setWordWrap(True)
+        lay.addLayout(search_row)
+        lay.addWidget(self.warn_empty)
         lay.addWidget(self.warn_table)
         self.tabs.addTab(tab, "")
 
     def _build_changes_tab(self):
         tab = QWidget()
         lay = QVBoxLayout(tab)
+        search_row = QHBoxLayout()
         self.change_search = QLineEdit()
+        self.change_search.setClearButtonEnabled(True)
         self.change_search.setPlaceholderText(t("search.placeholder"))
+        self.change_count = QLabel()
+        self.change_count.setObjectName("subtleLabel")
+        search_row.addWidget(self.change_search, 1)
+        search_row.addWidget(self.change_count)
         self.change_model = DictTableModel(
             [
                 ("action", "col.action"),
@@ -324,15 +373,129 @@ class MainWindow(QMainWindow):
         self.change_table.setSortingEnabled(True)
         self.change_table.horizontalHeader().setStretchLastSection(True)
         self.change_table.setWordWrap(True)
-        lay.addWidget(self.change_search)
-        lay.addWidget(self.change_table)
+        self.change_table.selectionModel().selectionChanged.connect(self._on_change_selection_changed)
+        self.change_empty = QLabel()
+        self.change_empty.setObjectName("subtleLabel")
+        self.change_empty.setWordWrap(True)
+        diff_splitter = QSplitter(Qt.Vertical)
+        diff_top = QWidget()
+        diff_top_layout = QVBoxLayout(diff_top)
+        diff_top_layout.setContentsMargins(0, 0, 0, 0)
+        diff_top_layout.addWidget(self.change_table)
+        diff_bottom = QWidget()
+        diff_bottom_layout = QVBoxLayout(diff_bottom)
+        diff_bottom_layout.setContentsMargins(0, 0, 0, 0)
+        diff_toolbar = QHBoxLayout()
+        self.lbl_diff_title = QLabel()
+        self.btn_copy_before = QPushButton()
+        self.btn_copy_after = QPushButton()
+        self.btn_copy_before.clicked.connect(
+            lambda: QApplication.clipboard().setText(self.change_before_text.toPlainText())
+        )
+        self.btn_copy_after.clicked.connect(
+            lambda: QApplication.clipboard().setText(self.change_after_text.toPlainText())
+        )
+        diff_toolbar.addWidget(self.lbl_diff_title)
+        diff_toolbar.addStretch(1)
+        diff_toolbar.addWidget(self.btn_copy_before)
+        diff_toolbar.addWidget(self.btn_copy_after)
+        self.diff_split = QSplitter(Qt.Horizontal)
+        before_panel = QWidget()
+        before_layout = QVBoxLayout(before_panel)
+        before_layout.setContentsMargins(0, 0, 0, 0)
+        self.change_before_label = QLabel()
+        self.change_before_text = QTextEdit()
+        self.change_before_text.setReadOnly(True)
+        before_layout.addWidget(self.change_before_label)
+        before_layout.addWidget(self.change_before_text)
+        after_panel = QWidget()
+        after_layout = QVBoxLayout(after_panel)
+        after_layout.setContentsMargins(0, 0, 0, 0)
+        self.change_after_label = QLabel()
+        self.change_after_text = QTextEdit()
+        self.change_after_text.setReadOnly(True)
+        after_layout.addWidget(self.change_after_label)
+        after_layout.addWidget(self.change_after_text)
+        self.diff_split.addWidget(before_panel)
+        self.diff_split.addWidget(after_panel)
+        self.diff_split.setStretchFactor(0, 1)
+        self.diff_split.setStretchFactor(1, 1)
+        diff_bottom_layout.addLayout(diff_toolbar)
+        diff_bottom_layout.addWidget(self.diff_split)
+        diff_splitter.addWidget(diff_top)
+        diff_splitter.addWidget(diff_bottom)
+        diff_splitter.setStretchFactor(0, 2)
+        diff_splitter.setStretchFactor(1, 1)
+        lay.addLayout(search_row)
+        lay.addWidget(self.change_empty)
+        lay.addWidget(diff_splitter)
+        self._clear_diff_view()
+        self.tabs.addTab(tab, "")
+
+    def _build_coverage_tab(self):
+        tab = QWidget()
+        lay = QVBoxLayout(tab)
+        top = QHBoxLayout()
+        self.coverage_search = QLineEdit()
+        self.coverage_search.setClearButtonEnabled(True)
+        self.coverage_search.setPlaceholderText(t("search.placeholder"))
+        self.coverage_count = QLabel()
+        self.coverage_count.setObjectName("subtleLabel")
+        self.btn_export_coverage = QPushButton()
+        self.btn_export_coverage.clicked.connect(self._export_coverage_csv)
+        top.addWidget(self.coverage_search, 1)
+        top.addWidget(self.coverage_count)
+        top.addWidget(self.btn_export_coverage)
+        self.coverage_model = DictTableModel(
+            [
+                ("row", "col.row"),
+                ("status", "col.status"),
+                ("table", "col.table"),
+                ("role", "col.role"),
+                ("field", "col.field"),
+                ("object", "col.object"),
+                ("auth", "col.auth"),
+                ("matched", "col.matched"),
+                ("deleted", "col.deleted"),
+                ("added", "col.added"),
+                ("reason", "col.reason"),
+            ]
+        )
+        self.coverage_proxy = MultiColumnFilterProxy(self)
+        self.coverage_proxy.setSourceModel(self.coverage_model)
+        self.coverage_search.textChanged.connect(self._filter_coverage)
+        self.coverage_table = QTableView()
+        self.coverage_table.setModel(self.coverage_proxy)
+        self.coverage_table.setSortingEnabled(True)
+        self.coverage_empty = QLabel()
+        self.coverage_empty.setObjectName("subtleLabel")
+        self.coverage_empty.setWordWrap(True)
+        lay.addLayout(top)
+        lay.addWidget(self.coverage_empty)
+        lay.addWidget(self.coverage_table)
         self.tabs.addTab(tab, "")
 
     def _configure_tables(self):
-        for table in (self.warn_table, self.change_table):
+        for table in (self.warn_table, self.change_table, self.coverage_table):
             table.verticalHeader().setVisible(False)
-            table.horizontalHeader().setStretchLastSection(True)
             table.setAlternatingRowColors(True)
+            table.setSelectionBehavior(QTableView.SelectRows)
+            table.setSelectionMode(QTableView.SingleSelection)
+            table.setShowGrid(False)
+            table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        warn_header = self.warn_table.horizontalHeader()
+        for col in range(6):
+            warn_header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        warn_header.setSectionResizeMode(6, QHeaderView.Stretch)
+        change_header = self.change_table.horizontalHeader()
+        for col in range(4):
+            change_header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        change_header.setSectionResizeMode(4, QHeaderView.Stretch)
+        change_header.setSectionResizeMode(5, QHeaderView.Stretch)
+        coverage_header = self.coverage_table.horizontalHeader()
+        for col in range(10):
+            coverage_header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        coverage_header.setSectionResizeMode(10, QHeaderView.Stretch)
 
     def _configure_accessibility(self):
         widgets = [
@@ -352,8 +515,13 @@ class MainWindow(QMainWindow):
             (self.chk_write_meta, "opt.write_meta", "tt.write_meta"),
             (self.warn_search, "tab.warns", "search.placeholder"),
             (self.change_search, "tab.changes", "search.placeholder"),
+            (self.coverage_search, "tab.coverage", "search.placeholder"),
             (self.warn_table, "tab.warns", "tab.warns"),
             (self.change_table, "tab.changes", "tab.changes"),
+            (self.coverage_table, "tab.coverage", "tab.coverage"),
+            (self.btn_export_coverage, "btn.export_csv", "tt.export_coverage"),
+            (self.btn_copy_before, "btn.copy_before", "tt.copy_before"),
+            (self.btn_copy_after, "btn.copy_after", "tt.copy_after"),
         ]
         for widget, name_key, desc_key in widgets:
             widget.setAccessibleName(t(name_key))
@@ -373,11 +541,19 @@ class MainWindow(QMainWindow):
             self.chk_write_meta,
             self.warn_search,
             self.change_search,
+            self.coverage_search,
+            self.btn_export_coverage,
+            self.btn_copy_before,
+            self.btn_copy_after,
             self.btn_open_outdir,
             self.btn_open_log,
         ]
         for current, nxt in zip(tab_sequence, tab_sequence[1:], strict=False):
             self.setTabOrder(current, nxt)
+        QShortcut(QKeySequence("F1"), self, activated=self._show_help)
+        QShortcut(QKeySequence("F5"), self, activated=lambda: self._start_job(preview=True))
+        QShortcut(QKeySequence("F6"), self, activated=lambda: self._start_job(preview=False))
+        QShortcut(QKeySequence("Escape"), self, activated=self._cancel_job)
 
     def _set_language_combo(self, lang_code):
         idx = self.cmb_language.findData(lang_code)
@@ -437,11 +613,26 @@ class MainWindow(QMainWindow):
         self.btn_open_log.setText(t("btn.open_log"))
         self.warn_search.setPlaceholderText(t("search.placeholder"))
         self.change_search.setPlaceholderText(t("search.placeholder"))
+        self.coverage_search.setPlaceholderText(t("search.placeholder"))
         self.tabs.setTabText(0, t("tab.summary"))
-        self.tabs.setTabText(1, t("tab.warns"))
-        self.tabs.setTabText(2, t("tab.changes"))
+        self.adds_caption.setText(t("metric.adds"))
+        self.deletes_caption.setText(t("metric.deletes"))
+        self.replaces_caption.setText(t("metric.replaces"))
+        self.warns_caption.setText(t("metric.warns"))
+        self.errors_caption.setText(t("metric.errors"))
+        self.warnings_caption.setText(t("metric.warnings"))
+        self.warn_empty.setText(t("empty.warns"))
+        self.change_empty.setText(t("empty.changes"))
+        self.coverage_empty.setText(t("empty.coverage"))
+        self.btn_export_coverage.setText(t("btn.export_csv"))
+        self.lbl_diff_title.setText(t("diff.title"))
+        self.change_before_label.setText(t("diff.before"))
+        self.change_after_label.setText(t("diff.after"))
+        self.btn_copy_before.setText(t("btn.copy_before"))
+        self.btn_copy_after.setText(t("btn.copy_after"))
         self.warn_model.refresh_headers()
         self.change_model.refresh_headers()
+        self.coverage_model.refresh_headers()
         self._refresh_theme_toggle()
         self._refresh_stepper()
         self._apply_tooltips()
@@ -457,6 +648,7 @@ class MainWindow(QMainWindow):
             self._suppress_result_dialog = True
             self._on_worker_finished(self.last_result)
             self._suppress_result_dialog = False
+        self._refresh_result_counts()
 
     def _apply_tooltips(self):
         self.cmb_language.setToolTip(t("tt.language"))
@@ -472,25 +664,167 @@ class MainWindow(QMainWindow):
         self.btn_open_log.setToolTip(t("tt.open_log"))
         self.chk_redact_log.setToolTip(t("tt.redact_log"))
         self.chk_write_meta.setToolTip(t("tt.write_meta"))
+        self.warn_search.setToolTip(t("tt.search_warns"))
+        self.change_search.setToolTip(t("tt.search_changes"))
+        self.coverage_search.setToolTip(t("tt.search_coverage"))
+        self.btn_export_coverage.setToolTip(t("tt.export_coverage"))
+        self.btn_copy_before.setToolTip(t("tt.copy_before"))
+        self.btn_copy_after.setToolTip(t("tt.copy_after"))
+        self.base_edit.setToolTip(self.base_path)
+        self.rules_edit.setToolTip(self.rules_path)
+        self.out_edit.setToolTip(self.outdir_path)
 
     def _set_summary_defaults(self):
-        self.lbl_adds.setText(t("summary.adds", n=0))
-        self.lbl_deletes.setText(t("summary.deletes", n=0))
-        self.lbl_replaces.setText(t("summary.replaces", n=0))
-        self.lbl_warns.setText(t("summary.warns", n=0))
-        self.lbl_errors.setText(t("summary.errors", n=0))
-        self.lbl_warnings.setText(t("summary.warnings", n=0))
+        self.adds_value.setText("0")
+        self.deletes_value.setText("0")
+        self.replaces_value.setText("0")
+        self.warns_value.setText("0")
+        self.errors_value.setText("0")
+        self.warnings_value.setText("0")
         self.lbl_summary_state.setText(t("summary.state.idle"))
         self.lbl_base_stats.setText(t("summary.base", enc="-", lines=0, roles=0, c1=0, c2=0))
-        self.lbl_rules_stats.setText(t("summary.rules", delim="-", rules=0, roles=0, tables="-"))
+        self.lbl_rules_stats.setText(t("summary.rules", sheet="-", rules=0, roles=0, tables="-"))
+        self.lbl_coverage_stats.setText(t("summary.coverage", total=0, applied=0, no_base=0, skipped=0, cancelled=0))
         self.lbl_hashes.clear()
         self.lbl_meta.clear()
+        self._refresh_result_counts()
 
     def _filter_warns(self, text):
         self.warn_proxy.setFilterRegularExpression(QRegularExpression(text, QRegularExpression.CaseInsensitiveOption))
+        self._refresh_result_counts()
 
     def _filter_changes(self, text):
         self.change_proxy.setFilterRegularExpression(QRegularExpression(text, QRegularExpression.CaseInsensitiveOption))
+        self._refresh_result_counts()
+
+    def _filter_coverage(self, text):
+        self.coverage_proxy.setFilterRegularExpression(
+            QRegularExpression(text, QRegularExpression.CaseInsensitiveOption)
+        )
+        self._refresh_result_counts()
+
+    def _refresh_result_counts(self):
+        warns_total = self.warn_model.rowCount()
+        changes_total = self.change_model.rowCount()
+        coverage_total = self.coverage_model.rowCount()
+        warns_visible = self.warn_proxy.rowCount()
+        changes_visible = self.change_proxy.rowCount()
+        coverage_visible = self.coverage_proxy.rowCount()
+        self.warn_count.setText(t("list.count", visible=warns_visible, total=warns_total))
+        self.change_count.setText(t("list.count", visible=changes_visible, total=changes_total))
+        self.coverage_count.setText(t("list.count", visible=coverage_visible, total=coverage_total))
+        self.tabs.setTabText(1, t("tab.with_count", name=t("tab.warns"), count=warns_total))
+        self.tabs.setTabText(2, t("tab.with_count", name=t("tab.changes"), count=changes_total))
+        self.tabs.setTabText(3, t("tab.with_count", name=t("tab.coverage"), count=coverage_total))
+        self.warn_empty.setVisible(warns_total == 0)
+        self.change_empty.setVisible(changes_total == 0)
+        self.coverage_empty.setVisible(coverage_total == 0)
+        self.btn_export_coverage.setEnabled(coverage_total > 0)
+
+    def _clear_diff_view(self):
+        self._last_diff_pair = ("", "")
+        empty_html = self._render_side_html("", [], before_side=True)
+        self.change_before_text.setHtml(empty_html)
+        self.change_after_text.setHtml(self._render_side_html("", [], before_side=False))
+
+    def _diff_colors(self):
+        if self.toggle_dark.isChecked():
+            return {
+                "bg": "#0F172A",
+                "text": "#E5E7EB",
+                "before": "#7F1D1D",
+                "after": "#14532D",
+                "replace": "#78350F",
+            }
+        return {
+            "bg": "#FFFFFF",
+            "text": "#0F172A",
+            "before": "#FEE2E2",
+            "after": "#DCFCE7",
+            "replace": "#FEF3C7",
+        }
+
+    def _render_side_html(self, text, opcodes, *, before_side):
+        colors = self._diff_colors()
+        pieces = []
+        for tag, a0, a1, b0, b1 in opcodes:
+            if before_side:
+                segment = text[a0:a1]
+                if tag == "equal":
+                    color = "transparent"
+                elif tag == "delete":
+                    color = colors["before"]
+                elif tag == "replace":
+                    color = colors["replace"]
+                else:
+                    continue
+            else:
+                segment = text[b0:b1]
+                if tag == "equal":
+                    color = "transparent"
+                elif tag == "insert":
+                    color = colors["after"]
+                elif tag == "replace":
+                    color = colors["replace"]
+                else:
+                    continue
+            if not segment:
+                continue
+            pieces.append(f"<span style='background:{color};'>{html.escape(segment)}</span>")
+        body = "".join(pieces) if pieces else html.escape(text)
+        return (
+            "<html><body style='background:{bg}; color:{text}; font-family:Consolas, monospace; "
+            "font-size:12px; white-space:pre-wrap;'>"
+            "{body}</body></html>"
+        ).format(bg=colors["bg"], text=colors["text"], body=body)
+
+    def _show_change_diff(self, before, after):
+        pair = (before or "", after or "")
+        if pair == self._last_diff_pair:
+            return
+        self._last_diff_pair = pair
+        matcher = difflib.SequenceMatcher(a=pair[0], b=pair[1])
+        opcodes = matcher.get_opcodes()
+        self.change_before_text.setHtml(self._render_side_html(pair[0], opcodes, before_side=True))
+        self.change_after_text.setHtml(self._render_side_html(pair[1], opcodes, before_side=False))
+
+    def _on_change_selection_changed(self, *_args):
+        index = self.change_table.currentIndex()
+        if not index.isValid():
+            self._clear_diff_view()
+            return
+        proxy_row = index.row()
+        before = self.change_proxy.index(proxy_row, 4).data() or ""
+        after = self.change_proxy.index(proxy_row, 5).data() or ""
+        self._show_change_diff(before, after)
+
+    def _export_proxy_to_csv(self, proxy, model, columns, path):
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.writer(fh, delimiter=";")
+            writer.writerow([t(header_key) for _, header_key in columns])
+            for row_idx in range(proxy.rowCount()):
+                source_row = proxy.mapToSource(proxy.index(row_idx, 0)).row()
+                source_data = model.rows[source_row]
+                values = []
+                for col_idx, (key, _header_key) in enumerate(columns):
+                    visible_value = proxy.index(row_idx, col_idx).data()
+                    values.append(str(visible_value or source_data.get(key, "")))
+                writer.writerow(values)
+
+    def _export_coverage_csv(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            t("dialog.export_coverage"),
+            str(Path(self.outdir_path or os.getcwd()) / "coverage_report.csv"),
+            "CSV (*.csv)",
+        )
+        if not path:
+            return
+        try:
+            self._export_proxy_to_csv(self.coverage_proxy, self.coverage_model, self.coverage_model.columns, path)
+            QMessageBox.information(self, t("dialog.export_title"), t("dialog.export_saved", path=Path(path).name))
+        except Exception as ex:  # noqa: BLE001
+            self._show_error_dialog(t("dialog.export_failed", error=str(ex)))
 
     def _pick_base(self):
         path, _ = QFileDialog.getOpenFileName(self, t("dialog.pick_base"), "", "All files (*)")
@@ -498,21 +832,24 @@ class MainWindow(QMainWindow):
             return
         self.base_path = path
         self.base_edit.setText(path)
+        self.base_edit.setToolTip(path)
         self.current_outfile = ""
         self.current_log_path = ""
         self.current_meta_path = ""
         if not self.outdir_path:
             self.outdir_path = os.path.dirname(path)
             self.out_edit.setText(self.outdir_path)
+            self.out_edit.setToolTip(self.outdir_path)
         self._analyze_base()
         self._refresh_guardrails()
 
     def _pick_rules(self):
-        path, _ = QFileDialog.getOpenFileName(self, t("dialog.pick_rules"), "", "CSV/TSV (*.csv *.tsv);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, t("dialog.pick_rules"), "", "Excel Rules (*.xlsx)")
         if not path:
             return
         self.rules_path = path
         self.rules_edit.setText(path)
+        self.rules_edit.setToolTip(path)
         self.current_outfile = ""
         self.current_log_path = ""
         self.current_meta_path = ""
@@ -527,6 +864,7 @@ class MainWindow(QMainWindow):
             return
         self.outdir_path = path
         self.out_edit.setText(path)
+        self.out_edit.setToolTip(path)
         self._refresh_output_details()
         self._refresh_guardrails()
 
@@ -540,6 +878,7 @@ class MainWindow(QMainWindow):
             )
             lines, enc = read_text(self.base_path)
             entries = build_entries(lines)
+            indexes = build_entry_indexes(entries)
             roles = set()
             c1251 = 0
             c1252 = 0
@@ -553,7 +892,16 @@ class MainWindow(QMainWindow):
                 elif e["table_type"] == "AGR_1252":
                     c1252 += 1
             self.base_detail.setText(
-                t("detail.base_stats", enc=enc, lines=len(lines), roles=len(roles), c1251=c1251, c1252=c1252)
+                t(
+                    "detail.base_stats",
+                    enc=enc,
+                    lines=len(lines),
+                    roles=len(roles),
+                    c1251=c1251,
+                    c1252=c1252,
+                    i1251=indexes["stats"]["agr_1251_keys"],
+                    i1252=indexes["stats"]["agr_1252_keys"],
+                )
             )
             self.base_ok = True
             self.base_indicator.setText("✅")
@@ -579,7 +927,7 @@ class MainWindow(QMainWindow):
             self.rules_detail.setText(
                 t(
                     "detail.rules_stats",
-                    delim=meta.get("delimiter_detected", ""),
+                    sheet=meta.get("rules_sheet_detected", "") or rs.get("sheet_name", ""),
                     rows=rs.get("rules_loaded", 0),
                     roles=rs.get("roles_unique", 0),
                     tables=tables,
@@ -791,6 +1139,24 @@ class MainWindow(QMainWindow):
             out.append(row)
         return out
 
+    def _build_coverage_rows(self, coverage_rows):
+        out = []
+        for item in coverage_rows:
+            row = dict(item)
+            reason_msg_id = row.get("reason_msg_id", "")
+            reason_params = row.get("reason_params", {}) or {}
+            status_key = {
+                "APPLIED": "coverage.status.applied",
+                "NO_BASE": "coverage.status.no_base",
+                "SKIPPED_ERROR": "coverage.status.skipped_error",
+                "CANCELLED": "coverage.status.cancelled",
+                "PENDING": "coverage.status.pending",
+            }.get(row.get("status", ""), "coverage.status.pending")
+            row["status"] = t(status_key)
+            row["reason"] = t(reason_msg_id, **reason_params) if reason_msg_id else ""
+            out.append(row)
+        return out
+
     def _on_worker_finished(self, result):
         self.last_result = result
         status = result.get("status", "error")
@@ -805,12 +1171,12 @@ class MainWindow(QMainWindow):
         warns_struct = self._translate_warns(result.get("warns_struct", []))
         errors_count = sum(1 for item in warns_struct if item.get("severity") in ("SEV1", "SEV2"))
         warnings_count = sum(1 for item in warns_struct if item.get("severity") == "SEV3")
-        self.lbl_adds.setText(t("summary.adds", n=counters.get("adds", 0)))
-        self.lbl_deletes.setText(t("summary.deletes", n=counters.get("deletes", 0)))
-        self.lbl_replaces.setText(t("summary.replaces", n=counters.get("replaces", 0)))
-        self.lbl_warns.setText(t("summary.warns", n=warns))
-        self.lbl_errors.setText(t("summary.errors", n=errors_count))
-        self.lbl_warnings.setText(t("summary.warnings", n=warnings_count))
+        self.adds_value.setText(str(counters.get("adds", 0)))
+        self.deletes_value.setText(str(counters.get("deletes", 0)))
+        self.replaces_value.setText(str(counters.get("replaces", 0)))
+        self.warns_value.setText(str(warns))
+        self.errors_value.setText(str(errors_count))
+        self.warnings_value.setText(str(warnings_count))
 
         base_stats = result.get("base_stats", {})
         rules_stats = result.get("rules_stats", {})
@@ -827,15 +1193,30 @@ class MainWindow(QMainWindow):
         self.lbl_rules_stats.setText(
             t(
                 "summary.rules",
-                delim=result.get("delimiter_detected", ""),
+                sheet=result.get("rules_sheet_detected", "") or rules_stats.get("sheet_name", ""),
                 rules=rules_stats.get("rules_loaded", 0),
                 roles=rules_stats.get("roles_unique", 0),
                 tables=", ".join(rules_stats.get("tables_touched", [])) or "-",
             )
         )
+        coverage_summary = result.get("coverage_summary", {}) or {}
+        self.lbl_coverage_stats.setText(
+            t(
+                "summary.coverage",
+                total=coverage_summary.get("total_rules", 0),
+                applied=coverage_summary.get("applied", 0),
+                no_base=coverage_summary.get("no_base", 0),
+                skipped=coverage_summary.get("skipped_error", 0),
+                cancelled=coverage_summary.get("cancelled", 0),
+            )
+        )
 
         self.warn_model.set_rows(warns_struct)
         self.change_model.set_rows(self._build_change_rows(result.get("sample_rows", [])))
+        self.coverage_model.set_rows(self._build_coverage_rows(result.get("coverage_rows", [])))
+        if self.change_model.rowCount() == 0:
+            self._clear_diff_view()
+        self._refresh_result_counts()
 
         if status == "cancelled":
             self.lbl_summary_state.setText(t("summary.state.cancelled"))
@@ -936,6 +1317,9 @@ def launch_gui(version, lang_code=None):
     owns_app = app is None
     if app is None:
         app = QApplication(sys.argv)
+    icon_path = resource_path("SAP-Role-Updater-Logo.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     win = MainWindow(version, initial_language=lang_code)
     win.show()
     if owns_app:

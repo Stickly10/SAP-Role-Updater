@@ -18,6 +18,4 @@ outputs/
 logs/
 *_MOD
 *_MOD_LOG.csv
-*_MOD_LOG.tsv
-*_MOD_LOG.txt
 *_MOD_META.json

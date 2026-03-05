@@ -1,4 +1,4 @@
-# Project Audit
+﻿# Project Audit
 
 ## Scope
 
@@ -17,26 +17,28 @@ Target: `SAP Role Updater` desktop app (Python + PySide6 + Windows EXE)
 
 Evidence:
 
-- [src/sap_role_updater/](src/sap_role_updater/)
-- [pyproject.toml](pyproject.toml)
-- [legacy/README.md](legacy/README.md)
+- [src/sap_role_updater/](../../src/sap_role_updater/)
+- [pyproject.toml](../../pyproject.toml)
+- [legacy/README.md](../../legacy/README.md)
 
 ## 2. Documentation
 
 - ✅ Consultant-facing guide updated in `README.md`
-- ✅ Architecture documented in `ARCHITECTURE.md`
-- ✅ Quick help documented in `HELP.md`
+- ✅ Architecture documented in `docs/engineering/ARCHITECTURE.md`
+- ✅ Quick help documented in `docs/user/HELP.md`
 - ✅ Security, privacy, and responsible usage documented
 - ✅ Changelog and release notes updated
+- ✅ Secondary documentation reorganized under `docs/`
 
 Evidence:
 
-- [README.md](README.md)
+- [README.md](../../README.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
-- [HELP.md](HELP.md)
-- [SECURITY.md](SECURITY.md)
-- [CHANGELOG.md](CHANGELOG.md)
-- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- [HELP.md](../user/HELP.md)
+- [SECURITY.md](../../SECURITY.md)
+- [CHANGELOG.md](../../CHANGELOG.md)
+- [RELEASE_NOTES.md](../releases/RELEASE_NOTES.md)
+- [docs/README.md](../README.md)
 
 ## 3. Ciberseguridad
 
@@ -52,11 +54,11 @@ Evidence:
 
 Evidence:
 
-- [src/sap_role_updater/utils/path_safety.py](src/sap_role_updater/utils/path_safety.py)
-- [src/sap_role_updater/core/processor.py](src/sap_role_updater/core/processor.py)
-- [SECURITY.md](SECURITY.md)
-- [SECURITY_CHECKLIST.md](SECURITY_CHECKLIST.md)
-- [security_checks.ps1](security_checks.ps1)
+- [path_safety.py](../../src/sap_role_updater/utils/path_safety.py)
+- [processor.py](../../src/sap_role_updater/core/processor.py)
+- [SECURITY.md](../../SECURITY.md)
+- [SECURITY_CHECKLIST.md](../security/SECURITY_CHECKLIST.md)
+- [security_checks.ps1](../../security_checks.ps1)
 
 ## 4. Arquitectura Y Escalabilidad
 
@@ -68,10 +70,10 @@ Evidence:
 
 Evidence:
 
-- [src/sap_role_updater/core/processor.py](src/sap_role_updater/core/processor.py)
-- [src/sap_role_updater/gui/window.py](src/sap_role_updater/gui/window.py)
-- [src/sap_role_updater/gui/models.py](src/sap_role_updater/gui/models.py)
-- [src/sap_role_updater/utils/settings.py](src/sap_role_updater/utils/settings.py)
+- [processor.py](../../src/sap_role_updater/core/processor.py)
+- [window.py](../../src/sap_role_updater/gui/window.py)
+- [models.py](../../src/sap_role_updater/gui/models.py)
+- [settings.py](../../src/sap_role_updater/utils/settings.py)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## 5. Testing / QA
@@ -86,9 +88,9 @@ Evidence:
 
 Evidence:
 
-- [tests/](tests/)
-- [tests/fixtures/](tests/fixtures/)
-- [QA_CHECKLIST.md](QA_CHECKLIST.md)
+- [tests/](../../tests/)
+- [fixtures/](../../tests/fixtures/)
+- [QA_CHECKLIST.md](../user/QA_CHECKLIST.md)
 
 ## 6. DevOps / Automatizacion
 
@@ -97,16 +99,18 @@ Evidence:
 - ✅ Build and checks scripts added
 - ✅ Semantic versioning helper added for `major.minor.patch`
 - ✅ Release commands documented
+- ✅ ZIP release packaging scripted
 - ❌ Containerization does not apply to this Windows desktop EXE workflow
 
 Evidence:
 
-- [.github/workflows/ci.yml](.github/workflows/ci.yml)
-- [requirements-dev.txt](requirements-dev.txt)
-- [scripts/build.ps1](scripts/build.ps1)
-- [scripts/run_checks.ps1](scripts/run_checks.ps1)
-- [scripts/bump_version.py](scripts/bump_version.py)
-- [RELEASE_COMMANDS.txt](RELEASE_COMMANDS.txt)
+- [ci.yml](../../.github/workflows/ci.yml)
+- [requirements-dev.txt](../../requirements-dev.txt)
+- [build.ps1](../../scripts/build.ps1)
+- [run_checks.ps1](../../scripts/run_checks.ps1)
+- [bump_version.py](../../scripts/bump_version.py)
+- [package_release.ps1](../../scripts/package_release.ps1)
+- [RELEASE_COMMANDS.txt](../releases/RELEASE_COMMANDS.txt)
 
 ## 7. UX / Accesibilidad / i18n
 
@@ -116,15 +120,16 @@ Evidence:
 - ✅ Accessible names and descriptions added to main controls
 - ✅ Explicit tab order added
 - ✅ Theme toggle and language selector remain persistent
+- ✅ Metric cards, tab counters, and keyboard shortcuts added
 - ⚠ i18n audit is heuristic, not a formal proof
 
 Evidence:
 
-- [src/sap_role_updater/gui/window.py](src/sap_role_updater/gui/window.py)
-- [src/sap_role_updater/gui/i18n.py](src/sap_role_updater/gui/i18n.py)
-- [scripts/i18n_audit.py](scripts/i18n_audit.py)
-- [locales/es.json](locales/es.json)
-- [locales/en.json](locales/en.json)
+- [window.py](../../src/sap_role_updater/gui/window.py)
+- [i18n.py](../../src/sap_role_updater/gui/i18n.py)
+- [i18n_audit.py](../../scripts/i18n_audit.py)
+- [es.json](../../locales/es.json)
+- [en.json](../../locales/en.json)
 
 ## 8. Legal / Privacidad / Cumplimiento
 
@@ -137,10 +142,10 @@ Evidence:
 
 Evidence:
 
-- [PRIVACY.md](PRIVACY.md)
-- [USAGE.md](USAGE.md)
-- [LICENSE](LICENSE)
-- [NOTICE.md](NOTICE.md)
+- [PRIVACY.md](../../PRIVACY.md)
+- [USAGE.md](../user/USAGE.md)
+- [LICENSE](../../LICENSE)
+- [NOTICE.md](../legal/NOTICE.md)
 
 ## Decisions And Tradeoffs
 
@@ -149,3 +154,4 @@ Evidence:
 - Did not add online telemetry, auto-update, or remote services.
 - Kept the base-file in-memory processing model because preserving untouched lines in order is more important than a risky algorithm rewrite.
 - Chose `pytest` + `ruff` as the minimum sustainable QA baseline; mypy remains optional and is deferred to P1.
+- Chose a ZIP release pack because GitHub normalizes asset filenames with spaces; inside the ZIP, the executable remains `SAP Role Updater.exe`.

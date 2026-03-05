@@ -42,7 +42,7 @@ class ThemeManager:
             QMainWindow, QWidget { background-color: #1E1E1E; color: #E5E7EB; }
             QGroupBox { border: 1px solid #3F3F46; border-radius: 8px; margin-top: 12px; font-weight: 600; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-            QLineEdit, QTableView { background: #111827; border: 1px solid #374151; border-radius: 6px; padding: 6px; }
+            QLineEdit, QTableView, QTextEdit { background: #111827; border: 1px solid #374151; border-radius: 6px; padding: 6px; }
             QTableView { gridline-color: #374151; selection-background-color: #1D4ED8; selection-color: #FFFFFF; }
             QPushButton { background: #374151; border: 1px solid #4B5563; border-radius: 6px; padding: 6px 10px; }
             QPushButton:hover { background: #4B5563; }
@@ -52,6 +52,12 @@ class ThemeManager:
             QHeaderView::section { background: #111827; border: 0; border-right: 1px solid #374151; border-bottom: 1px solid #374151; padding: 6px; }
             QTabBar::tab { background: #111827; border: 1px solid #374151; border-bottom: 0; padding: 8px 12px; margin-right: 3px; }
             QTabBar::tab:selected { background: #1F2937; }
+            QFrame#metricCard { background: #111827; border: 1px solid #374151; border-radius: 10px; }
+            QLabel#metricValue { font-size: 24px; font-weight: 700; color: #F8FAFC; }
+            QLabel#metricCaption { font-size: 12px; color: #93C5FD; }
+            QFrame#stateBanner { background: #172554; border: 1px solid #1D4ED8; border-radius: 10px; }
+            QLabel#stateBannerLabel { font-size: 15px; font-weight: 700; color: #DBEAFE; }
+            QLabel#subtleLabel { color: #94A3B8; }
             """
         )
 
@@ -79,7 +85,7 @@ class ThemeManager:
             QMainWindow, QWidget { background-color: #F8FAFC; color: #0F172A; }
             QGroupBox { border: 1px solid #CBD5E1; border-radius: 8px; margin-top: 12px; font-weight: 600; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-            QLineEdit, QTableView { background: #FFFFFF; border: 1px solid #94A3B8; border-radius: 6px; padding: 6px; color: #0F172A; }
+            QLineEdit, QTableView, QTextEdit { background: #FFFFFF; border: 1px solid #94A3B8; border-radius: 6px; padding: 6px; color: #0F172A; }
             QTableView { gridline-color: #CBD5E1; selection-background-color: #2563EB; selection-color: #FFFFFF; }
             QPushButton { background: #E2E8F0; border: 1px solid #94A3B8; border-radius: 6px; padding: 6px 10px; color: #0F172A; }
             QPushButton:hover { background: #CBD5E1; }
@@ -89,6 +95,11 @@ class ThemeManager:
             QHeaderView::section { background: #F1F5F9; border: 0; border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; padding: 6px; color: #0F172A; }
             QTabBar::tab { background: #E2E8F0; border: 1px solid #CBD5E1; border-bottom: 0; padding: 8px 12px; margin-right: 3px; color: #0F172A; }
             QTabBar::tab:selected { background: #FFFFFF; }
+            QFrame#metricCard { background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; }
+            QLabel#metricValue { font-size: 24px; font-weight: 700; color: #0F172A; }
+            QLabel#metricCaption { font-size: 12px; color: #475569; }
+            QFrame#stateBanner { background: #EFF6FF; border: 1px solid #93C5FD; border-radius: 10px; }
+            QLabel#stateBannerLabel { font-size: 15px; font-weight: 700; color: #1E3A8A; }
+            QLabel#subtleLabel { color: #64748B; }
             """
         )
-

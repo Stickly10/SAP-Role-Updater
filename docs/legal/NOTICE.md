@@ -9,6 +9,8 @@ This repository includes original application code plus third-party dependencies
   - Licensing model depends on the distribution used by the organization. Review the official PySide6 and Qt license terms before redistribution.
 - `PyInstaller`
   - Used only to package the Windows executable
+- `openpyxl`
+  - Used to read and generate `RULES.xlsx`
 - `pytest`, `ruff`, `bandit`, `pip-audit`
   - Development and quality tooling
 

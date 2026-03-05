@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Smoke tests for strict RULES.csv validation in preview mode."""
+"""Smoke tests for strict RULES.xlsx validation in preview mode."""
 
 from __future__ import annotations
 
-import csv
 import os
 import tempfile
+
+from openpyxl import Workbook
 
 from sap_role_updater_core import run_job_ex
 
@@ -13,10 +14,13 @@ HEADERS = ["ACTION", "TABLE", "MANDT", "AGR_NAME", "OBJECT", "AUTH", "FIELD", "L
 
 
 def write_rules(path: str, row: dict):
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=HEADERS)
-        writer.writeheader()
-        writer.writerow(row)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "RULES"
+    sheet.append(HEADERS)
+    sheet.append([row.get(header, "") for header in HEADERS])
+    workbook.save(path)
+    workbook.close()
 
 
 def run_case(
@@ -30,7 +34,7 @@ def run_case(
 ):
     with tempfile.TemporaryDirectory() as tmp:
         base_path = os.path.join(tmp, "Roles_EXT_BASE")
-        rules_path = os.path.join(tmp, "RULES.csv")
+        rules_path = os.path.join(tmp, "RULES.xlsx")
         with open(base_path, "w", encoding="utf-8", newline="") as fh:
             fh.write("HEADER_LINE_NOT_TARGET_TABLE\n")
         write_rules(rules_path, row)
@@ -60,7 +64,7 @@ def run_case(
             missing = [c for c in expected_codes if c not in codes]
             assert not missing, f"{name}: faltan codigos esperados {missing}, encontrados={sorted(codes)}"
 
-        allowed = {"Roles_EXT_BASE", "RULES.csv"}
+        allowed = {"Roles_EXT_BASE", "RULES.xlsx"}
         generated = [f for f in os.listdir(tmp) if f not in allowed]
         assert not generated, f"{name}: preview genero archivos inesperados {generated}"
         print(f"[ok] {name}: has_validation_errors={res.get('has_validation_errors')} codes={sorted(codes)}")

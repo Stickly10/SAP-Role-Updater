@@ -101,7 +101,7 @@ def main() -> int:
     _update_version_py(new_version)
     _update_version_info(new_version)
     print(f"{current} -> {new_version}")
-    print("Version files updated. Review README.md, CHANGELOG.md, and RELEASE_NOTES.md.")
+    print("Version files updated. Review README.md, CHANGELOG.md, and docs/releases/RELEASE_NOTES.md.")
     return 0
 
 

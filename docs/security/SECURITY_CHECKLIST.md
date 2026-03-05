@@ -11,6 +11,8 @@ python scripts\i18n_audit.py
 .\security_checks.ps1
 ```
 
+`security_checks.ps1` audita las dependencias declaradas del proyecto y el código productivo. No usa el entorno completo como fuente de verdad.
+
 ## Review Points
 
 - No accidental secrets in the repo:

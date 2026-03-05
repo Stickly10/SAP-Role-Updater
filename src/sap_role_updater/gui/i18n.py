@@ -23,6 +23,13 @@ def _default_locales_dir() -> Path:
     return resource_path("locales")
 
 
+def _load_locale_file(path: Path) -> dict[str, str] | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def load_locales(locales_dir: str | Path = "locales") -> dict[str, dict[str, str]]:
     global _LOCALES
     candidate = Path(locales_dir)
@@ -31,10 +38,9 @@ def load_locales(locales_dir: str | Path = "locales") -> dict[str, dict[str, str
     loaded: dict[str, dict[str, str]] = {}
     if candidate.exists() and candidate.is_dir():
         for fp in sorted(candidate.glob("*.json")):
-            try:
-                loaded[fp.stem] = json.loads(fp.read_text(encoding="utf-8"))
-            except Exception:  # noqa: BLE001
-                continue
+            locale_map = _load_locale_file(fp)
+            if locale_map is not None:
+                loaded[fp.stem] = locale_map
     _LOCALES = loaded
     return _LOCALES
 

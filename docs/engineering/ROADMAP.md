@@ -4,6 +4,7 @@
 
 - Keep `ruff`, `pytest`, and `i18n_audit.py` green
 - Build `SAP Role Updater.exe` from the current tagged source
+- Build `SAP Role Updater v<version>.zip` as the distributable release pack
 - Keep consultant docs, security docs, and release notes synchronized with the shipped version
 - Keep semantic versioning (`major.minor.patch`) explicit and consistent across release artifacts
 - Preserve compatibility of CLI, GUI, and final MOD output
@@ -17,6 +18,6 @@
 
 ## P2 - Future Improvements
 
-- Broader accessibility pass with keyboard shortcut review
+- Broader accessibility pass beyond the current keyboard shortcuts and labels
 - Richer QA matrix with packaged EXE smoke tests
 - More granular redaction modes for logs and UI previews

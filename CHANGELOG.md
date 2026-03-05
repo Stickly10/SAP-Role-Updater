@@ -1,42 +1,27 @@
-# Changelog
+﻿# Changelog
 
-## [1.3.12] - 2026-03-05
-
-### Added
-
-- Semantic version helper in `src/sap_role_updater/version.py`
-- `scripts/bump_version.py` to manage `major`, `minor`, `patch`, or explicit `set x.y.z`
-
-### Changed
-
-- Release commands now upload the EXE with explicit display label `SAP Role Updater.exe`
-- Release workflow now documents semantic versioning instead of manual patch-only bumps
-
-### Unchanged By Design
-
-- Core replacement algorithm
-- Final MOD file format
-- Standard log output format (`_MOD_LOG.txt`, tab-delimited)
-
-## [1.3.11] - 2026-03-05
+## [2.0.0] - 2026-03-05
 
 ### Added
 
-- `src/sap_role_updater/` package structure with legacy compatibility wrappers at repo root
-- `pytest` suite with fixtures and coverage for validators, preview mode, cancellation, and output paths
-- GitHub Actions workflow for lint, tests, i18n audit, and Windows build dry-run
-- Accessibility improvements in the GUI: accessible names/descriptions and explicit tab order
-- Documentation pack: `ARCHITECTURE.md`, `HELP.md`, `PRIVACY.md`, `USAGE.md`, `PROJECT_AUDIT.md`, `ROADMAP.md`, `DEFINITION_OF_DONE.md`, `QA_CHECKLIST.md`
-- Release helper scripts: `scripts/build.ps1`, `scripts/run_checks.ps1`, `scripts/i18n_audit.py`, `RELEASE_COMMANDS.txt`
+- soporte exclusivo para `RULES.xlsx` vía `openpyxl`
+- template `templates/RULES_template.xlsx` con hoja `RULES`, autofiltro y validaciones básicas
+- indexado del archivo base para `AGR_1251` y `AGR_1252`
+- cobertura por regla con resumen global
+- pestaña `Cobertura` en la GUI con búsqueda y exportación CSV
+- visor diff visual BEFORE/AFTER en la pestaña `Cambios`
+- icono de aplicación y de ejecutable con `SAP-Role-Updater-Logo.ico`
+- release pack ZIP para preservar el nombre interno `SAP Role Updater.exe`
 
 ### Changed
 
-- Version source of truth moved to `src/sap_role_updater/version.py`
-- Build, security, and QA workflows documented as repeatable steps
-- Release notes and consultant-facing README updated for the release-ready workflow
+- `RULES.csv` queda retirado y ya no es aceptado
+- el log estándar vuelve a ser `_MOD_LOG.csv` con delimitador `;`
+- el empaquetado incluye icono, template Excel y locales dentro del bundle
+- la versión sube a `2.0.0` por cambio incompatible de formato de reglas
 
 ### Unchanged By Design
 
-- Core replacement algorithm
-- Final MOD file format
-- Standard log output format (`_MOD_LOG.txt`, tab-delimited)
+- algoritmo funcional de reemplazo
+- formato final del archivo `_MOD`
+- ejecución local sin telemetría

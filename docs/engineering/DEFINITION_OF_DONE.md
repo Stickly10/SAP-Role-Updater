@@ -1,4 +1,4 @@
-# Definition Of Done
+﻿# Definition Of Done
 
 Any future change is done only when all items below are satisfied.
 
@@ -21,7 +21,7 @@ Any future change is done only when all items below are satisfied.
 - New I/O paths are validated and constrained
 - No external telemetry or data transfer
 - Sensitive outputs are documented if introduced
-- `SECURITY.md` and `SECURITY_CHECKLIST.md` stay current
+- `SECURITY.md` and `docs/security/SECURITY_CHECKLIST.md` stay current
 
 ## Tests
 
@@ -39,6 +39,7 @@ Any future change is done only when all items below are satisfied.
 
 - Version bumped through semantic versioning (`major.minor.patch`)
 - Use `python scripts\bump_version.py major|minor|patch` instead of manual edits
-- `CHANGELOG.md`, `RELEASE_NOTES.md`, and `RELEASE_COMMANDS.txt` updated
+- `CHANGELOG.md`, `docs/releases/RELEASE_NOTES.md`, and `docs/releases/RELEASE_COMMANDS.txt` updated
 - EXE builds successfully
+- ZIP release pack builds successfully
 - Commit, push, tag, and release completed or commands documented

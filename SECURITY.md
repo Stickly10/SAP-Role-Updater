@@ -1,91 +1,77 @@
-# Security
+﻿# Security
 
 ## Threat Model
 
-Trusted-but-risky local inputs:
+Entradas locales de riesgo controlado:
 
-- SAP base export file
-- `RULES.csv`
-- output folder selected by the user
+- archivo base SAP exportado desde PFCG
+- archivo `RULES.xlsx`
+- carpeta de salida seleccionada por el usuario
 
-Main risks for this offline desktop tool:
+Riesgos relevantes para esta aplicación offline:
 
-- path traversal or writes outside the intended output folder
-- corrupt or partial outputs if the process stops mid-write
-- denial of service via very large files
-- sensitive LOW/HIGH values exposed in logs
-- too much technical detail shown to end users by default
-- use of untrusted network shares
+- escritura fuera de la carpeta de salida
+- corrupción de outputs por fallos o cancelación
+- DoS por archivos excesivamente grandes
+- exposición de valores sensibles en logs
+- apertura desde shares de red no confiables
+- errores técnicos mostrados con demasiado detalle al usuario final
 
 ## Controls Implemented
 
 ### Path Safety
 
-- `pathlib`-based normalization and resolution
-- input files must be regular files
-- output folder must already exist and be writable
-- final output targets are validated to remain inside the chosen output folder
-- control characters in paths are rejected
-- suspiciously long Windows paths are blocked
-- UNC/network paths generate SEV3 warnings and require confirmation in GUI before processing
+- normalización con `pathlib`
+- validación de archivos regulares para base y reglas
+- validación de carpeta de salida existente y escribible
+- bloqueo de outputs fuera del `outdir`
+- rechazo de caracteres de control y rutas Windows inseguras
+- advertencia `SEV3` para rutas UNC/red con confirmación explícita en GUI
 
 ### Safe Writes
 
-- `_MOD`, `_MOD_LOG.txt`, and optional `_MOD_META.json` use temp file + atomic replace
-- cancellation does not leave final partial outputs behind
+- escritura atómica para `_MOD`, `_MOD_LOG.csv` y `_MOD_META.json`
+- cancelación sin dejar archivos finales incompletos
 
 ### Limits / DoS Protection
 
-- base export default limit: `300 MB`, `10,000,000` lines
-- rules file default limit: `50 MB`, `1,000,000` lines
-- limits are centralized in `src/sap_role_updater/utils/settings.py`
+- base: `300 MB` y `10,000,000` líneas por defecto
+- reglas: `50 MB` y `1,000,000` líneas por defecto
+- límites centralizados en `src/sap_role_updater/utils/settings.py`
 
 ### Input Validation
 
-- strict `RULES.csv` header validation
-- strict SAP field length and format validation
-- no heuristics or silent inference for missing fields
+- validación estricta de headers y filas de `RULES.xlsx`
+- validación de formato y longitud para campos SAP
+- sin heurísticas ni inferencias automáticas
 
 ### Logging / Privacy
 
-- optional privacy mode redacts LOW/HIGH values in the GUI sample and log
-- no network logging or telemetry
-- GUI hides tracebacks by default and shows technical details only on demand
-
-### Dependency Checks
-
-- `ruff`, `pytest`, `bandit`, and `pip-audit` are documented and scriptable
+- `Log privado` redacta `LOW/HIGH` en la muestra GUI y en `_MOD_LOG.csv`
+- sin telemetría online
+- checksums SHA-256 opcionales para auditoría local
 
 ## Offline Data Handling
 
-The tool does not transmit data to the internet.
+La herramienta no transmite datos a internet.
 
-Generated files remain local:
+Archivos generados localmente:
 
 - `<base>_MOD`
-- `<base>_MOD_LOG.txt`
-- optional `<base>_MOD_META.json`
+- `<base>_MOD_LOG.csv`
+- opcional `<base>_MOD_META.json`
 
 ## Secure Usage Recommendations
 
-- Work from QA-approved input files only
-- Prefer local folders over network shares
-- Use privacy mode if logs may expose sensitive values
-- Review `_MOD_LOG.txt` before importing into SAP
-- Test in QA before productive use
+- procesa siempre primero en QA
+- evita compartir logs si contienen valores sensibles
+- usa `Log privado` cuando el contenido del rol sea sensible
+- prefiere carpetas locales sobre rutas de red
+- revisa cobertura y log antes de importar a SAP
 
 ## Security Review Commands
 
-See:
+Ver:
 
-- `SECURITY_CHECKLIST.md`
+- `docs/security/SECURITY_CHECKLIST.md`
 - `security_checks.ps1`
-
-## Reporting
-
-When reporting a security issue internally, include:
-
-- app version
-- exact error code
-- minimal reproduction steps
-- sanitized sample files if needed

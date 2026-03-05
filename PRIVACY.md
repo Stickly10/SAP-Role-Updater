@@ -1,37 +1,25 @@
-# Privacy
+﻿# Privacy
 
-## Local-Only Processing
+## Declaración
 
-This tool does not send information to the internet.
+SAP Role Updater no envía información a internet ni a terceros.
 
-- No telemetry
-- No analytics
-- No cloud upload
-- No background sync
+## Archivos Procesados Localmente
 
-## Files Processed Locally
+Entradas:
 
-Inputs:
+- archivo base exportado desde PFCG
+- archivo `RULES.xlsx`
 
-- Base export from SAP PFCG Mass Download
-- `RULES.csv`
-
-Outputs:
+Salidas:
 
 - `<base>_MOD`
-- `<base>_MOD_LOG.txt`
-- Optional `<base>_MOD_META.json`
+- `<base>_MOD_LOG.csv`
+- opcional `<base>_MOD_META.json`
 
-## Sensitive Information Considerations
+## Recomendaciones
 
-Although the tool is offline, role values and organizational values may be sensitive for information security purposes.
-
-Recommendations:
-
-- Do not share `_MOD_LOG.txt` unless it is strictly necessary.
-- If the log may expose sensitive LOW/HIGH values, enable privacy mode (`Log privado` / `--redact-log`).
-- Store generated files only in approved internal folders.
-
-## Compliance Note
-
-The tool may process authorization or organizational data that can be operationally sensitive. Processing is local, which reduces transfer risk, but secure handling remains the responsibility of the user and the organization.
+- no compartas `_MOD_LOG.csv` si contiene valores sensibles
+- usa `Log privado` cuando aplique
+- conserva `SHA-256` local si necesitas trazabilidad
+- valida en QA antes de PRD
