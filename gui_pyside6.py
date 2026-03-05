@@ -289,12 +289,14 @@ class MainWindow(QMainWindow):
         self.lbl_deletes = QLabel("Deletes: 0")
         self.lbl_replaces = QLabel("Replaces: 0")
         self.lbl_warns = QLabel("Warns: 0")
-        for w in (self.lbl_adds, self.lbl_deletes, self.lbl_replaces, self.lbl_warns):
+        self.lbl_errors = QLabel("Errores (SEV1/SEV2): 0")
+        self.lbl_warnings = QLabel("Advertencias (SEV3): 0")
+        for w in (self.lbl_adds, self.lbl_deletes, self.lbl_replaces, self.lbl_warns, self.lbl_errors, self.lbl_warnings):
             w.setStyleSheet("font-size: 18px; font-weight: 700;")
             counters.addWidget(w)
         counters.addStretch(1)
         lay.addLayout(counters)
-        self.lbl_summary_state = QLabel("Sin ejecuciÃ³n.")
+        self.lbl_summary_state = QLabel("Sin ejecucion.")
         self.lbl_summary_state.setStyleSheet("font-size: 16px; font-weight: 700;")
         lay.addWidget(self.lbl_summary_state)
         self.lbl_base_stats = QLabel("Base: -")
@@ -523,7 +525,14 @@ class MainWindow(QMainWindow):
         if self._thread is not None:
             return
         if preview and not self._can_validate():
-            QMessageBox.warning(self, "ValidaciÃ³n", "Selecciona base y reglas vÃ¡lidas antes de validar.")
+            QMessageBox.warning(self, "Validacion", "Selecciona base y reglas validas antes de validar.")
+            return
+        if not preview and (self.rules_has_validation_errors or self.last_result_has_validation_errors):
+            QMessageBox.warning(
+                self,
+                "Procesar",
+                "No se puede procesar: RULES.csv tiene errores de validacion. Revisa la pestana Advertencias.",
+            )
             return
         if not preview and not self._can_process():
             QMessageBox.warning(self, "Procesar", "Selecciona base, reglas y carpeta de salida escribible.")
@@ -590,10 +599,15 @@ class MainWindow(QMainWindow):
                 if item.get("severity") in ("SEV1", "SEV2"):
                     self.last_result_has_validation_errors = True
                     break
+        warns_struct = result.get("warns_struct", [])
+        errors_count = sum(1 for item in warns_struct if item.get("severity") in ("SEV1", "SEV2"))
+        warnings_count = sum(1 for item in warns_struct if item.get("severity") == "SEV3")
         self.lbl_adds.setText(f"Adds: {counters.get('adds', 0)}")
         self.lbl_deletes.setText(f"Deletes: {counters.get('deletes', 0)}")
         self.lbl_replaces.setText(f"Replaces: {counters.get('replaces', 0)}")
         self.lbl_warns.setText(f"Warns: {warns}")
+        self.lbl_errors.setText(f"Errores (SEV1/SEV2): {errors_count}")
+        self.lbl_warnings.setText(f"Advertencias (SEV3): {warnings_count}")
 
         base_stats = result.get("base_stats", {})
         rules_stats = result.get("rules_stats", {})
@@ -615,7 +629,6 @@ class MainWindow(QMainWindow):
             )
         )
 
-        warns_struct = result.get("warns_struct", [])
         self.warn_model.set_rows(warns_struct)
         self.change_model.set_rows(self._build_change_rows(result.get("sample_rows", [])))
 
@@ -629,7 +642,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Error.")
             QMessageBox.critical(self, "Error", msg)
         else:
-            if self.last_result_has_validation_errors:
+            if errors_count > 0:
                 self.lbl_summary_state.setText("❌ Reglas inválidas: corrige RULES.csv antes de procesar")
             elif warns > 0:
                 self.lbl_summary_state.setText("⚠ Revisar advertencias antes de cargar a SAP")

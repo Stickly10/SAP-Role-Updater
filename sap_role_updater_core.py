@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# SAP-Role-Updater – Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
+﻿#!/usr/bin/env python3
+# SAP-Role-Updater â€“ Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
@@ -309,9 +309,9 @@ def run_job_ex(
         if res["has_validation_errors"] and not preview:
             res["status"] = "error"
             res["error"] = CodedError(
-                "VAL-INVALID-TABLE",
+                "VAL-RULES-INVALID",
                 "SEV2",
-                "Rules file has validation errors in TABLE column",
+                "Rules file has validation errors",
                 details="Run preview/validation and fix RULES.csv before processing.",
                 err_type="Validation",
                 origin="run_job_ex",
@@ -346,7 +346,7 @@ def run_job_ex(
                 res["counters"]["warns"] += 1
                 res["has_validation_errors"] = True
                 detail = (
-                    "Columna TABLE inválida o vacía. Esperado: AGR_1251 o AGR_1252. "
+                    "Columna TABLE invalida o vacia. Esperado: AGR_1251 o AGR_1252. "
                     f"Encontrado: '{r.get('table', '')}'. Corrige RULES.csv."
                 )
                 warn_emit("VAL-INVALID-TABLE", detail, severity="SEV2", rule=r, legacy=True)
@@ -535,85 +535,270 @@ def compose_line_1252(base, counter, varbl, org_value, high):
 
 def parse_rules(path, return_meta=False):
     txt, _ = read_text(path)
-    if not txt:
-        raise_error("VAL-001", "SEV3", "Rules file is empty", origin="parse_rules", err_type="Validation")
-    delim = detect_delimiter(txt[0])
-    reader = csv.DictReader(txt, delimiter=delim)
-    # Validar encabezados requeridos
-    required_headers = {"action", "table", "mandt", "agr_name", "field"}
-    present = {(h or "").strip().lstrip("\ufeff").lower() for h in (reader.fieldnames or [])}
-    missing = sorted(required_headers - present)
-    if missing:
-        raise_error("VAL-003", "SEV2", f"Missing required columns: {', '.join(missing)}", origin="parse_rules", err_type="Validation")
+    delim = detect_delimiter(txt[0]) if txt else ";"
+    reader = csv.DictReader(txt, delimiter=delim) if txt else None
+
+    required_headers = {"action", "table", "mandt", "agr_name", "object", "auth", "field", "low", "high"}
+    present = {(h or "").strip().lstrip("\ufeff").lower() for h in ((reader.fieldnames or []) if reader else [])}
+    missing_headers = sorted(required_headers - present)
+
     rules = []
     roles_touched = set()
     tables_touched = set()
     validation_issues = []
+    warning_issues = []
     valid_tables = {"AGR_1251", "AGR_1252"}
-    for i, row in enumerate(reader, start=2):  # start at data row
-        norm = {(k or "").strip().lstrip("\ufeff").lower(): (v or "").strip() for k, v in row.items()}
-        # skip fully empty rows
-        if all(v == "" for v in norm.values()):
-            continue
-        action = (norm.get("action", "replace_list") or "replace_list").lower()
-        table_found = norm.get("table", "") or ""
-        table = table_found.upper().strip()
-        mandt = norm.get("mandt", "")
-        role = norm.get("agr_name", "") or norm.get("role", "")
-        obj = norm.get("object", "") or norm.get("objct", "")
-        auth = norm.get("auth", "")
-        field = norm.get("field", "") or norm.get("org_field", "") or norm.get("varbl", "")
-        raw_low = norm.get("low", "") or norm.get("list", "")
-        raw_high = norm.get("high", "")
-        if role:
-            roles_touched.add(role.strip())
-        if table_found:
-            tables_touched.add(table.strip() or table_found.strip())
-        if table not in valid_tables:
-            validation_issues.append(
-                {
-                    "code": "VAL-INVALID-TABLE",
-                    "severity": "SEV2",
-                    "row": i,
-                    "table": table_found,
-                    "role": role,
-                    "field": field,
-                    "detail": (
-                        "Columna TABLE inválida o vacía. Esperado: AGR_1251 o AGR_1252. "
-                        f"Encontrado: '{table_found}'. Corrige RULES.csv."
-                    ),
-                }
+
+    def issue(code, severity, row, table, role, field, detail):
+        return {
+            "code": code,
+            "severity": severity,
+            "row": row,
+            "table": table,
+            "role": role,
+            "field": field,
+            "detail": detail,
+        }
+
+    if not txt:
+        validation_issues.append(
+            issue(
+                "VAL-001",
+                "SEV2",
+                1,
+                "",
+                "",
+                "",
+                "Archivo de reglas vacio. RULES.csv debe incluir encabezados y filas de datos.",
             )
-            continue
-        rules.append(
-            {
-                "row": i,
-                "action": action,
-                "table": table,
-                "mandt": mandt,
-                "role": role,
-                "object": obj,
-                "auth": auth,
-                "field": field,
-                "pairs": split_pairs(
+        )
+
+    if missing_headers:
+        validation_issues.append(
+            issue(
+                "VAL-MISSING-HEADERS",
+                "SEV2",
+                1,
+                "",
+                "",
+                "",
+                (
+                    "Encabezados faltantes: "
+                    + ", ".join(missing_headers)
+                    + ". Esperado: ACTION, TABLE, MANDT, AGR_NAME, OBJECT, AUTH, FIELD, LOW, HIGH."
+                ),
+            )
+        )
+
+    if txt and not missing_headers and reader:
+        for i, row in enumerate(reader, start=2):
+            norm = {(k or "").strip().lstrip("\ufeff").lower(): (v or "").strip() for k, v in row.items()}
+            if all(v == "" for v in norm.values()):
+                continue
+
+            raw_action = norm.get("action", "")
+            raw_table = norm.get("table", "")
+            raw_mandt = norm.get("mandt", "")
+            raw_role = norm.get("agr_name", "")
+            raw_object = norm.get("object", "")
+            raw_auth = norm.get("auth", "")
+            raw_field = norm.get("field", "")
+            raw_low = norm.get("low", "")
+            raw_high = norm.get("high", "")
+
+            action = raw_action.lower()
+            table = raw_table.upper()
+
+            if raw_role:
+                roles_touched.add(raw_role)
+            if raw_table:
+                tables_touched.add(table)
+
+            row_errors = []
+            row_warnings = []
+
+            if raw_action == "":
+                row_errors.append(
+                    issue(
+                        "VAL-MISSING-ACTION",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: ACTION vacio. Esperado: replace_list. Corrige RULES.csv.",
+                    )
+                )
+            elif action != "replace_list":
+                row_errors.append(
+                    issue(
+                        "VAL-INVALID-ACTION",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: ACTION invalido. Esperado: replace_list. Encontrado: '{raw_action}'. Corrige RULES.csv.",
+                    )
+                )
+
+            if raw_table == "":
+                row_errors.append(
+                    issue(
+                        "VAL-MISSING-TABLE",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: TABLE vacio. Esperado: AGR_1251 o AGR_1252. Corrige RULES.csv.",
+                    )
+                )
+            elif table not in valid_tables:
+                row_errors.append(
+                    issue(
+                        "VAL-INVALID-TABLE",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: TABLE invalido. Esperado: AGR_1251 o AGR_1252. Encontrado: '{raw_table}'. Corrige RULES.csv.",
+                    )
+                )
+
+            if raw_mandt == "":
+                row_errors.append(
+                    issue(
+                        "VAL-MISSING-MANDT",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: MANDT vacio. Corrige RULES.csv.",
+                    )
+                )
+            if raw_role == "":
+                row_errors.append(
+                    issue(
+                        "VAL-MISSING-AGR_NAME",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: AGR_NAME vacio. Corrige RULES.csv.",
+                    )
+                )
+            if raw_field == "":
+                row_errors.append(
+                    issue(
+                        "VAL-MISSING-FIELD",
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: FIELD vacio. Corrige RULES.csv.",
+                    )
+                )
+
+            if table == "AGR_1251":
+                if raw_object == "":
+                    row_errors.append(
+                        issue(
+                            "VAL-MISSING-OBJECT",
+                            "SEV2",
+                            i,
+                            raw_table,
+                            raw_role,
+                            raw_field,
+                            f"Fila {i}: OBJECT vacio para AGR_1251. Corrige RULES.csv.",
+                        )
+                    )
+                if raw_auth == "":
+                    row_errors.append(
+                        issue(
+                            "VAL-MISSING-AUTH",
+                            "SEV2",
+                            i,
+                            raw_table,
+                            raw_role,
+                            raw_field,
+                            f"Fila {i}: AUTH vacio para AGR_1251. Corrige RULES.csv.",
+                        )
+                    )
+            elif table == "AGR_1252":
+                if raw_object or raw_auth:
+                    row_warnings.append(
+                        issue(
+                            "WARN-IGNORED-OBJECT-AUTH",
+                            "SEV3",
+                            i,
+                            raw_table,
+                            raw_role,
+                            raw_field,
+                            f"Fila {i}: OBJECT/AUTH seran ignorados para AGR_1252.",
+                        )
+                    )
+
+            if row_errors:
+                validation_issues.extend(row_errors)
+                warning_issues.extend(row_warnings)
+                continue
+
+            try:
+                pairs = split_pairs(
                     raw_low,
                     raw_high,
-                    {"row": i, "table": table, "role": role, "field": field},
-                ),
-            }
-        )
+                    {"row": i, "table": table, "role": raw_role, "field": raw_field},
+                )
+            except CodedError as ce:
+                validation_issues.append(
+                    issue(
+                        ce.code or "VAL-PAIR",
+                        ce.severity or "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        f"Fila {i}: {ce.message}. {ce.details or ''}".strip(),
+                    )
+                )
+                warning_issues.extend(row_warnings)
+                continue
+
+            rules.append(
+                {
+                    "row": i,
+                    "action": action,
+                    "table": table,
+                    "mandt": raw_mandt,
+                    "role": raw_role,
+                    "object": raw_object,
+                    "auth": raw_auth,
+                    "field": raw_field,
+                    "pairs": pairs,
+                }
+            )
+            warning_issues.extend(row_warnings)
+
+    all_issues = validation_issues + warning_issues
+    has_validation_errors = any(it.get("severity") in ("SEV1", "SEV2") for it in all_issues)
     meta = {
         "delimiter_detected": delim,
         "rules_stats": {
             "rows_total_including_header": len(txt),
             "rules_loaded": len(rules),
-            "validation_errors": len(validation_issues),
+            "validation_errors": len([it for it in all_issues if it.get("severity") in ("SEV1", "SEV2")]),
+            "validation_warnings": len([it for it in all_issues if it.get("severity") == "SEV3"]),
             "roles_unique": len(roles_touched),
             "tables_touched": sorted(tables_touched),
-            "required_columns_ok": True,
+            "required_columns_ok": not missing_headers,
         },
-        "validation_issues": validation_issues,
-        "has_validation_errors": bool(validation_issues),
+        "validation_issues": all_issues,
+        "has_validation_errors": has_validation_errors,
     }
     if return_meta:
         return rules, meta
@@ -777,5 +962,6 @@ def handle_rule_1252(r, entries, counters_used, log_rows, counters):
 
     counters["replaces"] += 1
     append_replace_logs(befores, afters, log_rows)
+
 
 
