@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python3
-# SAP-Role-Updater â€“ Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
+# SAP-Role-Updater - Combined AGR_1251/AGR_1252 modifier (fixed-width SAP role exports)
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
@@ -548,6 +548,8 @@ def parse_rules(path, return_meta=False):
     validation_issues = []
     warning_issues = []
     valid_tables = {"AGR_1251", "AGR_1252"}
+    rx_mandt = re.compile(r"^\d{3}$")
+    rx_varbl = re.compile(r"^\$[A-Z0-9_]{1,9}$")
 
     def issue(code, severity, row, table, role, field, detail):
         return {
@@ -559,6 +561,16 @@ def parse_rules(path, return_meta=False):
             "field": field,
             "detail": detail,
         }
+
+    def split_tokens(raw):
+        txt_val = raw or ""
+        if "|" in txt_val:
+            parts = txt_val.split("|")
+        elif "," in txt_val:
+            parts = txt_val.split(",")
+        else:
+            parts = [txt_val]
+        return [p.strip() for p in parts]
 
     if not txt:
         validation_issues.append(
@@ -617,117 +629,85 @@ def parse_rules(path, return_meta=False):
             row_errors = []
             row_warnings = []
 
+            def add_err(code, detail):
+                row_errors.append(issue(code, "SEV2", i, raw_table, raw_role, raw_field, detail))
+
             if raw_action == "":
-                row_errors.append(
-                    issue(
-                        "VAL-MISSING-ACTION",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: ACTION vacio. Esperado: replace_list. Corrige RULES.csv.",
-                    )
-                )
+                add_err("VAL-MISSING-ACTION", f"Fila {i}: ACTION vacio. Esperado: replace_list. Corrige RULES.csv.")
             elif action != "replace_list":
-                row_errors.append(
-                    issue(
-                        "VAL-INVALID-ACTION",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: ACTION invalido. Esperado: replace_list. Encontrado: '{raw_action}'. Corrige RULES.csv.",
-                    )
+                add_err(
+                    "VAL-INVALID-ACTION",
+                    f"Fila {i}: ACTION invalido. Esperado: replace_list. Encontrado: '{raw_action}'. Corrige RULES.csv.",
                 )
 
             if raw_table == "":
-                row_errors.append(
-                    issue(
-                        "VAL-MISSING-TABLE",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: TABLE vacio. Esperado: AGR_1251 o AGR_1252. Corrige RULES.csv.",
-                    )
-                )
+                add_err("VAL-MISSING-TABLE", f"Fila {i}: TABLE vacio. Esperado: AGR_1251 o AGR_1252. Corrige RULES.csv.")
             elif table not in valid_tables:
-                row_errors.append(
-                    issue(
-                        "VAL-INVALID-TABLE",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: TABLE invalido. Esperado: AGR_1251 o AGR_1252. Encontrado: '{raw_table}'. Corrige RULES.csv.",
-                    )
+                add_err(
+                    "VAL-INVALID-TABLE",
+                    f"Fila {i}: TABLE invalido. Esperado: AGR_1251 o AGR_1252. Encontrado: '{raw_table}'. Corrige RULES.csv.",
                 )
 
             if raw_mandt == "":
-                row_errors.append(
-                    issue(
-                        "VAL-MISSING-MANDT",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: MANDT vacio. Corrige RULES.csv.",
-                    )
+                add_err("VAL-MISSING-MANDT", f"Fila {i}: MANDT vacio. Corrige RULES.csv.")
+            elif not rx_mandt.fullmatch(raw_mandt):
+                add_err(
+                    "VAL-MANDT-FORMAT",
+                    f"Fila {i}: MANDT invalido. Esperado 3 digitos (000-999). Encontrado: '{raw_mandt}'.",
                 )
+
             if raw_role == "":
-                row_errors.append(
-                    issue(
-                        "VAL-MISSING-AGR_NAME",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: AGR_NAME vacio. Corrige RULES.csv.",
+                add_err("VAL-MISSING-AGR_NAME", f"Fila {i}: AGR_NAME vacio. Corrige RULES.csv.")
+            else:
+                if len(raw_role) > 30:
+                    add_err(
+                        "VAL-AGRNAME-LEN",
+                        f"Fila {i}: AGR_NAME excede 30 caracteres. Longitud={len(raw_role)}. Valor: '{raw_role}'.",
                     )
-                )
+                if any(ch.isspace() for ch in raw_role):
+                    add_err(
+                        "VAL-AGRNAME-FORMAT",
+                        f"Fila {i}: AGR_NAME invalido. No se permiten espacios. Encontrado: '{raw_role}'.",
+                    )
+
             if raw_field == "":
-                row_errors.append(
-                    issue(
-                        "VAL-MISSING-FIELD",
-                        "SEV2",
-                        i,
-                        raw_table,
-                        raw_role,
-                        raw_field,
-                        f"Fila {i}: FIELD vacio. Corrige RULES.csv.",
-                    )
-                )
+                add_err("VAL-MISSING-FIELD", f"Fila {i}: FIELD vacio. Corrige RULES.csv.")
+
+            for col_name, raw_val in (("LOW", raw_low), ("HIGH", raw_high)):
+                for token in split_tokens(raw_val):
+                    if token and len(token) > 40:
+                        add_err(
+                            "VAL-LOWHIGH-LEN",
+                            f"Fila {i}: {col_name} contiene token >40 chars. Token='{token}' (len={len(token)}).",
+                        )
 
             if table == "AGR_1251":
                 if raw_object == "":
-                    row_errors.append(
-                        issue(
-                            "VAL-MISSING-OBJECT",
-                            "SEV2",
-                            i,
-                            raw_table,
-                            raw_role,
-                            raw_field,
-                            f"Fila {i}: OBJECT vacio para AGR_1251. Corrige RULES.csv.",
-                        )
-                    )
+                    add_err("VAL-MISSING-OBJECT", f"Fila {i}: OBJECT vacio para AGR_1251. Corrige RULES.csv.")
                 if raw_auth == "":
-                    row_errors.append(
-                        issue(
-                            "VAL-MISSING-AUTH",
-                            "SEV2",
-                            i,
-                            raw_table,
-                            raw_role,
-                            raw_field,
-                            f"Fila {i}: AUTH vacio para AGR_1251. Corrige RULES.csv.",
+                    add_err("VAL-MISSING-AUTH", f"Fila {i}: AUTH vacio para AGR_1251. Corrige RULES.csv.")
+
+                for col_name, raw_val in (("OBJECT", raw_object), ("AUTH", raw_auth), ("FIELD", raw_field)):
+                    if raw_val and any(ch.isspace() for ch in raw_val):
+                        add_err(
+                            "VAL-1251-KEY-FORMAT",
+                            f"Fila {i}: {col_name} invalido para AGR_1251. No se permiten espacios. Encontrado: '{raw_val}'.",
                         )
+
+                if raw_object and len(raw_object) > 10:
+                    add_err(
+                        "VAL-OBJECT-LEN",
+                        f"Fila {i}: OBJECT excede 10 caracteres. Longitud={len(raw_object)}. Valor: '{raw_object}'.",
+                    )
+                if raw_auth and len(raw_auth) > 12:
+                    add_err(
+                        "VAL-AUTH-LEN",
+                        f"Fila {i}: AUTH excede 12 caracteres. Longitud={len(raw_auth)}. Valor: '{raw_auth}'.",
+                    )
+                if raw_field and len(raw_field) > 10:
+                    add_err(
+                        "VAL-FIELD-LEN",
+                        f"Fila {i}: FIELD excede 10 caracteres. Longitud={len(raw_field)}. Valor: '{raw_field}'.",
                     )
             elif table == "AGR_1252":
                 if raw_object or raw_auth:
@@ -743,10 +723,20 @@ def parse_rules(path, return_meta=False):
                         )
                     )
 
-            if row_errors:
-                validation_issues.extend(row_errors)
-                warning_issues.extend(row_warnings)
-                continue
+                if raw_field:
+                    if len(raw_field) > 10:
+                        add_err(
+                            "VAL-VARBL-LEN",
+                            f"Fila {i}: FIELD(VARBL) excede 10 caracteres. Longitud={len(raw_field)}. Valor: '{raw_field}'.",
+                        )
+                    if not rx_varbl.fullmatch(raw_field):
+                        add_err(
+                            "VAL-1252-VARBL-FORMAT",
+                            (
+                                f"Fila {i}: FIELD(VARBL) invalido para AGR_1252. Debe iniciar con '$' y max 10 chars. "
+                                f"Encontrado: '{raw_field}'."
+                            ),
+                        )
 
             try:
                 pairs = split_pairs(
@@ -755,7 +745,7 @@ def parse_rules(path, return_meta=False):
                     {"row": i, "table": table, "role": raw_role, "field": raw_field},
                 )
             except CodedError as ce:
-                validation_issues.append(
+                row_errors.append(
                     issue(
                         ce.code or "VAL-PAIR",
                         ce.severity or "SEV2",
@@ -766,6 +756,10 @@ def parse_rules(path, return_meta=False):
                         f"Fila {i}: {ce.message}. {ce.details or ''}".strip(),
                     )
                 )
+                pairs = []
+
+            if row_errors:
+                validation_issues.extend(row_errors)
                 warning_issues.extend(row_warnings)
                 continue
 

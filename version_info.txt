@@ -15,8 +15,8 @@ VSVersionInfo(
         StringStruct('CompanyName', 'Stickly10'),
         StringStruct('FileDescription', 'SAP Role Updater'),
         StringStruct('FileVersion', '1.3.8'),
-        StringStruct('InternalName', 'SAP-Role-Updater'),
-        StringStruct('OriginalFilename', 'SAP-Role-Updater.exe'),
+        StringStruct('InternalName', 'SAP Role Updater'),
+        StringStruct('OriginalFilename', 'SAP Role Updater.exe'),
         StringStruct('ProductName', 'SAP Role Updater'),
         StringStruct('ProductVersion', '1.3.8'),
       ])

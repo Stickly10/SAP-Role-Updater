@@ -190,10 +190,10 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-size: 20px; font-weight: 700;")
         header_layout.addWidget(title)
         steps = QHBoxLayout()
-        self.step_base = QLabel("â‘  Base")
-        self.step_rules = QLabel("â‘¡ Reglas")
-        self.step_out = QLabel("â‘¢ Salida")
-        self.step_run = QLabel("â‘£ Validar/Procesar")
+        self.step_base = QLabel("\u2460 Base")
+        self.step_rules = QLabel("\u2461 Reglas")
+        self.step_out = QLabel("\u2462 Salida")
+        self.step_run = QLabel("\u2463 Validar/Procesar")
         for w in (self.step_base, self.step_rules, self.step_out, self.step_run):
             w.setStyleSheet("padding: 4px 10px; border: 1px solid #374151; border-radius: 8px;")
             steps.addWidget(w)
@@ -205,19 +205,19 @@ class MainWindow(QMainWindow):
             layout,
             "Paso 1: Archivo Base (PFCG Mass Download)",
             self._pick_base,
-            "ðŸ“‚",
+            "\U0001F4C2",
         )
         self.rules_edit, self.rules_detail, self.rules_indicator = self._add_path_group(
             layout,
             "Paso 2: Reglas (CSV AGR_1251/AGR_1252)",
             self._pick_rules,
-            "ðŸ“‚",
+            "\U0001F4C2",
         )
         self.out_edit, self.out_detail, self.out_indicator = self._add_path_group(
             layout,
             "Paso 3: Carpeta de salida",
             self._pick_outdir,
-            "ðŸ“",
+            "\U0001F4C1",
         )
 
         actions = QHBoxLayout()
@@ -272,7 +272,7 @@ class MainWindow(QMainWindow):
         detail = QLabel("Sin seleccionar.")
         detail.setStyleSheet("color: #9CA3AF;")
         detail.setWordWrap(True)
-        indicator = QLabel("âš ")
+        indicator = QLabel("⚠")
         indicator.setStyleSheet("font-size: 18px;")
         lay.addWidget(edit, 0, 0)
         lay.addWidget(btn, 0, 1)
@@ -418,13 +418,13 @@ class MainWindow(QMainWindow):
                 elif e["table_type"] == "AGR_1252":
                     c1252 += 1
             self.base_detail.setText(
-                f"encoding={enc} | total_lÃ­neas={len(lines)} | roles_Ãºnicos={len(roles)} | AGR_1251={c1251} | AGR_1252={c1252}"
+                f"encoding={enc} | total_lineas={len(lines)} | roles_unicos={len(roles)} | AGR_1251={c1251} | AGR_1252={c1252}"
             )
             self.base_ok = True
-            self.base_indicator.setText("âœ…")
+            self.base_indicator.setText("✅")
         except Exception as ex:  # noqa: BLE001
             self.base_ok = False
-            self.base_indicator.setText("âš ")
+            self.base_indicator.setText("⚠")
             self.base_detail.setText(f"Error leyendo base: {ex}")
         self._refresh_stepper()
 
@@ -462,12 +462,12 @@ class MainWindow(QMainWindow):
     def _refresh_output_details(self):
         if not self.base_path or not self.outdir_path:
             self.out_detail.setText("Selecciona base + carpeta salida para ver nombres esperados.")
-            self.out_indicator.setText("âš ")
+            self.out_indicator.setText("⚠")
             return
         out_file, log_file = build_output_paths(self.base_path, self.outdir_path)
         self.out_detail.setText(f"Salida esperada: {os.path.basename(out_file)} | Log: {os.path.basename(log_file)}")
         writable = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
-        self.out_indicator.setText("âœ…" if writable else "âš ")
+        self.out_indicator.setText("✅" if writable else "⚠")
 
     def _refresh_guardrails(self):
         self._refresh_output_details()
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning)
         box.setWindowTitle("Advertencias detectadas")
-        box.setText(f"Hay {warns} advertencias. Se recomienda corregir antes de cargar a SAP. Â¿Deseas continuar?")
+        box.setText(f"Hay {warns} advertencias. Se recomienda corregir antes de cargar a SAP. ¿Deseas continuar?")
         box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Yes)
         box.setDefaultButton(QMessageBox.Cancel)
         cancel_btn = box.button(QMessageBox.Cancel)
@@ -578,7 +578,7 @@ class MainWindow(QMainWindow):
     def _cancel_job(self):
         if self._worker:
             self._worker.request_cancel()
-            self.status_label.setText("CancelaciÃ³n solicitada...")
+            self.status_label.setText("Cancelacion solicitada...")
             self.btn_cancel.setEnabled(False)
 
     def _on_worker_progress(self, current, total, message, percent):
@@ -612,7 +612,7 @@ class MainWindow(QMainWindow):
         base_stats = result.get("base_stats", {})
         rules_stats = result.get("rules_stats", {})
         self.lbl_base_stats.setText(
-            "Base: encoding={enc}, lÃ­neas={lines}, roles={roles}, AGR_1251={c1}, AGR_1252={c2}".format(
+            "Base: encoding={enc}, lineas={lines}, roles={roles}, AGR_1251={c1}, AGR_1252={c2}".format(
                 enc=result.get("encoding_detected", ""),
                 lines=base_stats.get("total_lines", 0),
                 roles=base_stats.get("roles_unique", 0),
