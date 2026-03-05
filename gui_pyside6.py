@@ -7,11 +7,25 @@ import os
 import sys
 import traceback
 
-from PySide6.QtCore import QAbstractTableModel, QObject, QRegularExpression, QSettings, QSortFilterProxyModel, Qt, QThread, Signal, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QEasingCurve,
+    QObject,
+    Property,
+    QPropertyAnimation,
+    QRegularExpression,
+    QRectF,
+    QSettings,
+    QSize,
+    QSortFilterProxyModel,
+    Qt,
+    QThread,
+    QUrl,
+    Signal,
+)
+from PySide6.QtGui import QColor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -130,6 +144,54 @@ class JobWorker(QObject):
             self.failed.emit(str(ex), traceback.format_exc())
 
 
+class AnimatedToggle(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(50, 24)
+        self.setFlat(True)
+        self._offset = 3.0
+        self._anim = QPropertyAnimation(self, b"offset", self)
+        self._anim.setDuration(180)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.toggled.connect(self._animate)
+
+    def sync_position(self):
+        self._offset = self.width() - self.height() + 3 if self.isChecked() else 3
+        self.update()
+
+    def _animate(self, _checked=None):
+        self._anim.stop()
+        self._anim.setStartValue(self._offset)
+        self._anim.setEndValue(self.width() - self.height() + 3 if self.isChecked() else 3)
+        self._anim.start()
+
+    def get_offset(self):
+        return self._offset
+
+    def set_offset(self, value):
+        self._offset = float(value)
+        self.update()
+
+    offset = Property(float, get_offset, set_offset)  # type: ignore[assignment]
+
+    def paintEvent(self, event):  # noqa: N802
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        bg = QColor("#2563EB") if self.isChecked() else QColor("#94A3B8")
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2)
+
+        knob_d = rect.height() - 6
+        knob_rect = QRectF(self._offset, 3, knob_d, knob_d)
+        painter.setBrush(QColor("#FFFFFF"))
+        painter.drawEllipse(knob_rect)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, version, initial_language=None):
         super().__init__()
@@ -157,9 +219,10 @@ class MainWindow(QMainWindow):
         self.resize(1300, 860)
         self._build_ui()
         saved_theme = (self.settings.value("theme", "dark", type=str) or "dark").strip().lower()
-        self.chk_dark.blockSignals(True)
-        self.chk_dark.setChecked(saved_theme != "light")
-        self.chk_dark.blockSignals(False)
+        self.toggle_dark.blockSignals(True)
+        self.toggle_dark.setChecked(saved_theme != "light")
+        self.toggle_dark.blockSignals(False)
+        self.toggle_dark.sync_position()
         self._apply_theme(save=False)
         self._set_language_combo(lang)
         self.retranslate_ui()
@@ -181,14 +244,23 @@ class MainWindow(QMainWindow):
         self.cmb_language.addItem("", "es")
         self.cmb_language.addItem("", "en")
         self.cmb_language.currentIndexChanged.connect(self._on_language_changed)
-        self.chk_dark = QCheckBox()
-        self.chk_dark.toggled.connect(self._on_theme_toggled)
+        self.lbl_theme_icon = QLabel()
+        self.toggle_dark = AnimatedToggle()
+        self.toggle_dark.toggled.connect(self._on_theme_toggled)
+        self.lbl_theme = QLabel()
+        self.btn_help = QPushButton("?")
+        self.btn_help.setFixedWidth(30)
+        self.btn_help.clicked.connect(self._show_help)
         top.addWidget(self.title)
         top.addStretch(1)
         top.addWidget(self.lbl_language)
         top.addWidget(self.cmb_language)
         top.addSpacing(12)
-        top.addWidget(self.chk_dark)
+        top.addWidget(self.lbl_theme_icon)
+        top.addWidget(self.toggle_dark)
+        top.addWidget(self.lbl_theme)
+        top.addSpacing(8)
+        top.addWidget(self.btn_help)
         header_layout.addLayout(top)
         steps = QHBoxLayout()
         self.step_base = QLabel("1")
@@ -202,17 +274,17 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(steps)
         layout.addWidget(header)
 
-        self.base_group, self.base_edit, self.base_detail, self.base_indicator = self._add_path_group(
+        self.base_group, self.base_edit, self.base_detail, self.base_indicator, self.base_btn = self._add_path_group(
             layout,
             self._pick_base,
-            QStyle.SP_FileIcon,
+            QStyle.SP_DialogOpenButton,
         )
-        self.rules_group, self.rules_edit, self.rules_detail, self.rules_indicator = self._add_path_group(
+        self.rules_group, self.rules_edit, self.rules_detail, self.rules_indicator, self.rules_btn = self._add_path_group(
             layout,
             self._pick_rules,
-            QStyle.SP_FileIcon,
+            QStyle.SP_DialogOpenButton,
         )
-        self.out_group, self.out_edit, self.out_detail, self.out_indicator = self._add_path_group(
+        self.out_group, self.out_edit, self.out_detail, self.out_indicator, self.out_btn = self._add_path_group(
             layout,
             self._pick_outdir,
             QStyle.SP_DirOpenIcon,
@@ -266,19 +338,23 @@ class MainWindow(QMainWindow):
         edit.setReadOnly(True)
         btn = QPushButton()
         btn.setFixedWidth(42)
-        btn.setIcon(self.style().standardIcon(icon_kind))
+        btn.setIconSize(QSize(18, 18))
+        icon = self.style().standardIcon(icon_kind)
+        btn.setIcon(icon)
+        if icon.isNull():
+            btn.setText("...")
         btn.clicked.connect(browse_fn)
         detail = QLabel(t("detail.not_selected"))
         detail.setStyleSheet("color: #9CA3AF;")
         detail.setWordWrap(True)
-        indicator = QLabel("!")
+        indicator = QLabel("⚠")
         indicator.setStyleSheet("font-size: 18px;")
         lay.addWidget(edit, 0, 0)
         lay.addWidget(btn, 0, 1)
         lay.addWidget(indicator, 0, 2)
         lay.addWidget(detail, 1, 0, 1, 3)
         parent_layout.addWidget(box)
-        return box, edit, detail, indicator
+        return box, edit, detail, indicator, btn
 
     def _build_summary_tab(self):
         tab = QWidget()
@@ -371,14 +447,14 @@ class MainWindow(QMainWindow):
         self.cmb_language.blockSignals(False)
 
     def _refresh_theme_toggle(self):
-        dark = self.chk_dark.isChecked()
-        icon_kind = QStyle.SP_TitleBarShadeButton if dark else QStyle.SP_TitleBarUnshadeButton
-        self.chk_dark.setIcon(self.style().standardIcon(icon_kind))
-        self.chk_dark.setText(t("theme.dark_mode"))
-        self.chk_dark.setToolTip(t("theme.dark_icon") if dark else t("theme.light_icon"))
+        dark = self.toggle_dark.isChecked()
+        self.lbl_theme_icon.setText("🌙" if dark else "☀")
+        self.lbl_theme.setText(t("theme.dark_mode"))
+        self.toggle_dark.setToolTip(t("theme.dark_icon") if dark else t("theme.light_icon"))
+        self.lbl_theme_icon.setToolTip(self.toggle_dark.toolTip())
 
     def _apply_theme(self, save=True):
-        if self.chk_dark.isChecked():
+        if self.toggle_dark.isChecked():
             ThemeManager.apply_dark(QApplication.instance())
             if save:
                 self.settings.setValue("theme", "dark")
@@ -388,8 +464,11 @@ class MainWindow(QMainWindow):
                 self.settings.setValue("theme", "light")
         self._refresh_theme_toggle()
 
-    def _on_theme_toggled(self):
+    def _on_theme_toggled(self, _checked=None):
         self._apply_theme(save=True)
+
+    def _show_help(self):
+        QMessageBox.information(self, t("help.title"), t("help.body"))
 
     def _on_language_changed(self):
         code = self.cmb_language.currentData()
@@ -402,6 +481,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(t("app.window_title", version=self.version))
         self.title.setText(t("app.window_title", version=self.version))
         self.lbl_language.setText(t("header.language"))
+        self.lbl_theme.setText(t("theme.dark_mode"))
         self.cmb_language.setItemText(0, t("header.lang.es"))
         self.cmb_language.setItemText(1, t("header.lang.en"))
         self.base_group.setTitle(t("group.base"))
@@ -421,6 +501,7 @@ class MainWindow(QMainWindow):
         self.change_model.refresh_headers()
         self._refresh_theme_toggle()
         self._refresh_stepper()
+        self._apply_tooltips()
         if not self.base_path:
             self.base_detail.setText(t("detail.not_selected"))
         if not self.rules_path:
@@ -432,6 +513,19 @@ class MainWindow(QMainWindow):
             self._suppress_result_dialog = True
             self._on_worker_finished(self.last_result)
             self._suppress_result_dialog = False
+
+    def _apply_tooltips(self):
+        self.cmb_language.setToolTip(t("tt.language"))
+        self.toggle_dark.setToolTip(t("tt.theme_toggle"))
+        self.btn_help.setToolTip(t("tt.help"))
+        self.base_btn.setToolTip(t("tt.pick_base"))
+        self.rules_btn.setToolTip(t("tt.pick_rules"))
+        self.out_btn.setToolTip(t("tt.pick_output"))
+        self.btn_validate.setToolTip(t("tt.validate"))
+        self.btn_process.setToolTip(t("tt.process"))
+        self.btn_cancel.setToolTip(t("tt.cancel"))
+        self.btn_open_outdir.setToolTip(t("tt.open_output"))
+        self.btn_open_log.setToolTip(t("tt.open_log"))
 
     def _set_summary_defaults(self):
         self.lbl_adds.setText(t("summary.adds", n=0))
@@ -502,10 +596,10 @@ class MainWindow(QMainWindow):
                 t("detail.base_stats", enc=enc, lines=len(lines), roles=len(roles), c1251=c1251, c1252=c1252)
             )
             self.base_ok = True
-            self.base_indicator.setText("OK")
+            self.base_indicator.setText("✅")
         except Exception as ex:  # noqa: BLE001
             self.base_ok = False
-            self.base_indicator.setText("!")
+            self.base_indicator.setText("⚠")
             self.base_detail.setText(f"{t('dialog.error_title')}: {ex}")
         self._refresh_stepper()
 
@@ -528,30 +622,30 @@ class MainWindow(QMainWindow):
                 )
             )
             self.rules_ok = True
-            self.rules_indicator.setText("!" if self.rules_has_validation_errors else "OK")
+            self.rules_indicator.setText("⚠" if self.rules_has_validation_errors else "✅")
         except CodedError as ce:
             self.rules_ok = False
             self.rules_has_validation_errors = True
-            self.rules_indicator.setText("!")
+            self.rules_indicator.setText("⚠")
             self.rules_detail.setText(f"{ce.code}: {ce.message}")
         except Exception as ex:  # noqa: BLE001
             self.rules_ok = False
             self.rules_has_validation_errors = True
-            self.rules_indicator.setText("!")
+            self.rules_indicator.setText("⚠")
             self.rules_detail.setText(f"{t('dialog.error_title')}: {ex}")
         self._refresh_stepper()
 
     def _refresh_output_details(self):
         if not self.base_path or not self.outdir_path:
             self.out_detail.setText(t("detail.output_hint"))
-            self.out_indicator.setText("!")
+            self.out_indicator.setText("⚠")
             return
         out_file, log_file = build_output_paths(self.base_path, self.outdir_path)
         self.out_detail.setText(
             t("detail.output_expected", outfile=os.path.basename(out_file), logfile=os.path.basename(log_file))
         )
         writable = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
-        self.out_indicator.setText("OK" if writable else "!")
+        self.out_indicator.setText("✅" if writable else "⚠")
 
     def _refresh_guardrails(self):
         self._refresh_output_details()
@@ -568,10 +662,10 @@ class MainWindow(QMainWindow):
         rules_ok = self.rules_ok and os.path.isfile(self.rules_path) and not self.rules_has_validation_errors
         out_ok = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
         run_ok = self.last_result is not None and self.last_result.get("status") == "ok"
-        self.step_base.setText(f"1 {t('header.step.base')} [{'OK' if base_ok else '!'}]")
-        self.step_rules.setText(f"2 {t('header.step.rules')} [{'OK' if rules_ok else '!'}]")
-        self.step_out.setText(f"3 {t('header.step.output')} [{'OK' if out_ok else '!'}]")
-        self.step_run.setText(f"4 {t('header.step.run')} [{'OK' if run_ok else t('step.pending')}]")
+        self.step_base.setText(f"1 {t('header.step.base')} {'✅' if base_ok else '⚠'}")
+        self.step_rules.setText(f"2 {t('header.step.rules')} {'✅' if rules_ok else '⚠'}")
+        self.step_out.setText(f"3 {t('header.step.output')} {'✅' if out_ok else '⚠'}")
+        self.step_run.setText(f"4 {t('header.step.run')} {'✅' if run_ok else '⏳'}")
 
     def _can_validate(self):
         return os.path.isfile(self.base_path) and os.path.isfile(self.rules_path) and self.base_ok and self.rules_ok
@@ -657,7 +751,7 @@ class MainWindow(QMainWindow):
                 continue
             button.setEnabled(enabled)
         self.cmb_language.setEnabled(enabled)
-        self.chk_dark.setEnabled(enabled)
+        self.toggle_dark.setEnabled(enabled)
         self.btn_validate.setEnabled(enabled and self._can_validate())
         self.btn_process.setEnabled(enabled and self._can_process())
 
