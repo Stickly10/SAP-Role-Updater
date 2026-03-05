@@ -595,7 +595,7 @@ def main():
         )
 
         if args.verbose:
-            print(f"[rules] processed")
+            print("[rules] processed")
         if args.preview:
             print("[end] Preview only, no files written.")
         else:
