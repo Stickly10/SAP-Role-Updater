@@ -3,7 +3,7 @@
 # - Single rules CSV can target AGR_1251 and/or AGR_1252 in one run.
 # - Preserves 1:1 every line that is not the targeted table.
 # - Only action supported: replace_list.
-# - Log CSV with header: action,before,after.
+# - Log TXT tab-delimited with header: action,before,after.
 # Rules columns (case-insensitive): ACTION, TABLE, MANDT, AGR_NAME, OBJECT, AUTH, FIELD, LOW, HIGH
 #   * For AGR_1251: OBJECT/AUTH required; FIELD = auth field; LOW/HIGH = value or range (40 chars each).
 #   * For AGR_1252: leave OBJECT/AUTH empty; FIELD = org field (e.g. $WERKS); LOW/HIGH = org values/ranges (40 chars each, padded).
@@ -187,7 +187,7 @@ def build_output_paths(infile, outdir):
     if not ext:
         ext = ""
     outfile = os.path.join(outdir, f"{name}_MOD{ext}")
-    log_path = os.path.join(outdir, f"{name}_MOD_LOG.tsv")
+    log_path = os.path.join(outdir, f"{name}_MOD_LOG.txt")
     return outfile, log_path
 
 

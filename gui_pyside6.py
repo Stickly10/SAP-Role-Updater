@@ -266,8 +266,9 @@ class MainWindow(QMainWindow):
         self.step_base = QLabel("1")
         self.step_rules = QLabel("2")
         self.step_out = QLabel("3")
-        self.step_run = QLabel("4")
-        for w in (self.step_base, self.step_rules, self.step_out, self.step_run):
+        self.step_validate = QLabel("4")
+        self.step_process = QLabel("5")
+        for w in (self.step_base, self.step_rules, self.step_out, self.step_validate, self.step_process):
             w.setStyleSheet("padding: 4px 10px; border: 1px solid #374151; border-radius: 8px;")
             steps.addWidget(w)
         steps.addStretch(1)
@@ -661,11 +662,13 @@ class MainWindow(QMainWindow):
         base_ok = self.base_ok and os.path.isfile(self.base_path)
         rules_ok = self.rules_ok and os.path.isfile(self.rules_path) and not self.rules_has_validation_errors
         out_ok = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
-        run_ok = self.last_result is not None and self.last_result.get("status") == "ok"
+        validate_ok = self.last_result is not None
+        process_ok = bool(self.current_outfile) and os.path.isfile(self.current_outfile)
         self.step_base.setText(f"1 {t('header.step.base')} {'✅' if base_ok else '⚠'}")
         self.step_rules.setText(f"2 {t('header.step.rules')} {'✅' if rules_ok else '⚠'}")
         self.step_out.setText(f"3 {t('header.step.output')} {'✅' if out_ok else '⚠'}")
-        self.step_run.setText(f"4 {t('header.step.run')} {'✅' if run_ok else '⏳'}")
+        self.step_validate.setText(f"4 {t('header.step.validate')} {'✅' if validate_ok else '⏳'}")
+        self.step_process.setText(f"5 {t('header.step.process')} {'✅' if process_ok else '⏳'}")
 
     def _can_validate(self):
         return os.path.isfile(self.base_path) and os.path.isfile(self.rules_path) and self.base_ok and self.rules_ok

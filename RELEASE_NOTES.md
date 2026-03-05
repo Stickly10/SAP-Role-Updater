@@ -20,5 +20,4 @@
 - Core replacement algorithm is unchanged.
 - Output files remain:
   - `<base>_MOD`
-  - `<base>_MOD_LOG.tsv`
-
+  - `<base>_MOD_LOG.txt`

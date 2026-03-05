@@ -5,7 +5,7 @@ Herramienta de escritorio para preparar cambios masivos de roles SAP antes de ca
 Toma un archivo base exportado desde Mass Download y un `RULES.csv`, valida reglas y genera:
 
 - Archivo modificado (`_MOD`)
-- Log tabulado (`_MOD_LOG.tsv`)
+- Log tabulado (`_MOD_LOG.txt`)
 
 No altera tablas no objetivo y mantiene la logica de reemplazo existente.
 
@@ -31,7 +31,7 @@ No altera tablas no objetivo y mantiene la logica de reemplazo existente.
 7. Pulsa **Procesar y generar _MOD**.
 8. Revisa:
    - `<base>_MOD`
-   - `<base>_MOD_LOG.tsv`
+   - `<base>_MOD_LOG.txt`
 9. Carga el `_MOD` en PFCG y prueba primero en QA.
 
 ## Estructura De RULES.csv
@@ -109,8 +109,7 @@ python main.py --in <base> --rules <rules> --preview --lang en
 
 ## Notas De Log
 
-El archivo log se mantiene en formato tabulado estable (`.tsv`) para compatibilidad:
+El archivo log se mantiene en formato tabulado estable (`.txt`) para compatibilidad:
 
 - Header: `action`, `before`, `after`
 - Delimitador: tab (`\t`)
-
