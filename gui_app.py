@@ -70,7 +70,7 @@ def launch_gui(run_job_func, version):
         "status": tk.StringVar(value="Listo para procesar."),
     }
     full_paths = {"in": "", "rules": "", "outdir": ""}
-    last_out = {"outfile": "", "log": ""}
+    last_out = {"outfile": "", "log": "", "warns": []}
     entries = {}
 
     def set_path(target, path):
@@ -103,7 +103,7 @@ def launch_gui(run_job_func, version):
 
     progress = ttk.Progressbar(root, mode="indeterminate", length=200)
 
-    def run():
+    def run(preview=False):
         if not validate():
             state["status"].set("Completa los archivos requeridos; revisa resaltados.")
             return
@@ -111,20 +111,28 @@ def launch_gui(run_job_func, version):
             progress.grid(row=5, column=1, pady=6)
             progress.start(10)
             root.update_idletasks()
-            counters, outfile, log_path = run_job_func(
+            counters, outfile, log_path, warns = run_job_func(
                 full_paths["in"],
                 full_paths["rules"],
                 full_paths["outdir"],
+                preview=preview,
                 verbose=False,
             )
             msg = (
-                f"Proceso completado. Adds={counters['adds']} Deletes={counters['deletes']} "
-                f"Replaces={counters['replaces']} Warns={counters['warns']}.\n"
-                f"Salida: {outfile}\nLog: {log_path}"
+                f"{'Previsualización' if preview else 'Proceso completado'}. Adds={counters['adds']} Deletes={counters['deletes']} "
+                f"Replaces={counters['replaces']} Warns={counters['warns']}."
             )
+            if not preview:
+                msg += f"\nSalida: {outfile}\nLog: {log_path}"
+            if warns:
+                msg += "\nAdvertencias:\n- " + "\n- ".join(warns)
+                status_label.configure(style="Warn.TLabel")
+            else:
+                status_label.configure(style="StatusBox.TLabel")
             state["status"].set(msg)
-            last_out["outfile"], last_out["log"] = outfile, log_path
-            messagebox.showinfo("Éxito", "Proceso completado correctamente.")
+            if not preview:
+                last_out["outfile"], last_out["log"], last_out["warns"] = outfile, log_path, warns
+                messagebox.showinfo("Éxito", "Proceso completado correctamente.")
         except Exception as ex:  # noqa: BLE001
             state["status"].set(f"Error: {ex}")
             messagebox.showerror("Error", str(ex))
@@ -151,9 +159,8 @@ def launch_gui(run_job_func, version):
 
     status_frame = ttk.Frame(root, padding=8)
     status_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
-    ttk.Label(status_frame, textvariable=state["status"], style="StatusBox.TLabel", wraplength=540, anchor="w").grid(
-        row=0, column=0, columnspan=3, sticky="ew"
-    )
+    status_label = ttk.Label(status_frame, textvariable=state["status"], style="StatusBox.TLabel", wraplength=540, anchor="w")
+    status_label.grid(row=0, column=0, columnspan=3, sticky="ew")
 
     def open_path(path):
         if not path:
@@ -173,7 +180,8 @@ def launch_gui(run_job_func, version):
     ttk.Button(status_frame, text="Abrir carpeta salida", command=lambda: open_path(os.path.dirname(last_out.get("outfile","")))).grid(row=1, column=0, sticky="w", pady=(6,0))
     ttk.Button(status_frame, text="Abrir log", command=lambda: open_path(last_out.get("log",""))).grid(row=1, column=1, sticky="w", pady=(6,0))
 
-    ttk.Button(root, text="⚙️ Procesar", style="Accent.TButton", command=run).grid(
+    ttk.Button(root, text="👁️ Previsualizar", command=lambda: run(preview=True)).grid(row=4, column=0, pady=10)
+    ttk.Button(root, text="⚙️ Procesar", style="Accent.TButton", command=lambda: run(preview=False)).grid(
         row=4, column=0, columnspan=3, pady=10
     )
 

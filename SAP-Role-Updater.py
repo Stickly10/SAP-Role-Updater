@@ -10,7 +10,7 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
 
-__version__ = "1.3.6"
+__version__ = "1.3.7"
 
 import argparse
 import csv
@@ -179,8 +179,12 @@ def build_output_paths(infile, outdir):
     return outfile, log_path
 
 
-def run_job(infile, rules_path, outdir, verbose=False):
-    outfile, log_path = build_output_paths(infile, outdir)
+def run_job(infile, rules_path, outdir=None, verbose=False, preview=False):
+    if not preview and not outdir:
+        raise_error("VAL-004", "SEV2", "Output directory is required unless preview", origin="run_job", err_type="Validation")
+    outfile = log_path = ""
+    if not preview:
+        outfile, log_path = build_output_paths(infile, outdir)
     lines, enc = read_text(infile)
     entries = build_entries(lines)
     rules = parse_rules(rules_path)
@@ -189,10 +193,12 @@ def run_job(infile, rules_path, outdir, verbose=False):
     counters = {"adds": 0, "deletes": 0, "replaces": 0, "warns": 0}
     log_rows = []
 
+    warns_details = []
     for r in rules:
         if r["action"] != "replace_list":
             counters["warns"] += 1
             log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
+            warns_details.append(f"Unsupported action: {r['action']} (row={r['row']})")
             continue
         if r["table"] == "AGR_1251":
             handle_rule_1251(r, entries, counters_used, log_rows, counters)
@@ -201,6 +207,7 @@ def run_job(infile, rules_path, outdir, verbose=False):
         else:
             counters["warns"] += 1
             log_rows.append(["WARN-TABLE", f"Ignored table={r['table']}", ""])
+            warns_details.append(f"Ignored table={r['table']} (row={r['row']})")
 
     out_lines = []
     for i, e in enumerate(entries):
@@ -209,26 +216,27 @@ def run_job(infile, rules_path, outdir, verbose=False):
         elif not e.get("marked_deleted"):
             out_lines.append(e["raw"])
 
-    with open(outfile, "w", encoding=enc, newline="\n") as f:
-        for ln in out_lines:
-            f.write(ln + "\n")
+    if outdir and not preview:
+        with open(outfile, "w", encoding=enc, newline="\n") as f:
+            for ln in out_lines:
+                f.write(ln + "\n")
 
-    with open(log_path, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f, delimiter="\t")
-        w.writerow(["action", "before", "after"])
-        for a, b, c in log_rows:
-            w.writerow(
-                [
-                    a,
-                    (b or "").replace("\r", " ").replace("\n", " "),
-                    (c or "").replace("\r", " ").replace("\n", " "),
-                ]
-            )
+        with open(log_path, "w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f, delimiter="\t")
+            w.writerow(["action", "before", "after"])
+            for a, b, c in log_rows:
+                w.writerow(
+                    [
+                        a,
+                        (b or "").replace("\r", " ").replace("\n", " "),
+                        (c or "").replace("\r", " ").replace("\n", " "),
+                    ]
+                )
 
     # liberar referencias pesadas
     del lines, entries, rules, counters_used, log_rows, out_lines
 
-    return counters, outfile, log_path
+    return counters, outfile, log_path, warns_details
 
 
 # ---------------- parse entries ----------------
@@ -339,6 +347,12 @@ def parse_rules(path):
         raise_error("VAL-001", "SEV3", "Rules file is empty", origin="parse_rules", err_type="Validation")
     delim = detect_delimiter(txt[0])
     reader = csv.DictReader(txt, delimiter=delim)
+    # Validar encabezados requeridos
+    required_headers = {"action", "table", "mandt", "agr_name", "field"}
+    present = { (h or "").strip().lower() for h in (reader.fieldnames or []) }
+    missing = sorted(required_headers - present)
+    if missing:
+        raise_error("VAL-003", "SEV2", f"Missing required columns: {', '.join(missing)}", origin="parse_rules", err_type="Validation")
     rules = []
     for i, row in enumerate(reader, start=2):  # start at data row
         norm = { (k or "").strip().lower(): (v or "").strip() for k, v in row.items() }
@@ -545,28 +559,39 @@ def main():
     ap.add_argument("--outdir", dest="outdir", help="Output directory for files")
     ap.add_argument("--verbose", dest="verbose", action="store_true", default=False)
     ap.add_argument("--gui", dest="gui", action="store_true", help="Launch simple GUI and ignore CLI paths")
+    ap.add_argument("--preview", dest="preview", action="store_true", help="Preview counts without writing output")
     args = ap.parse_args()
 
     auto_gui = len(sys.argv) == 1
     if auto_gui or args.gui:
         launch_gui(run_job, __version__)
         return
-    if not (args.infile and args.rules and args.outdir):
-        ap.error("When not using --gui, --in, --rules, and --outdir are required.")
+    if args.preview:
+        if not (args.infile and args.rules):
+            ap.error("Preview requires --in and --rules.")
+    else:
+        if not (args.infile and args.rules and args.outdir):
+            ap.error("When not using --gui, --in, --rules, and --outdir are required.")
 
     try:
-        counters, log_path = run_job(
+        counters, outfile, log_path, warns = run_job(
             infile=args.infile,
             rules_path=args.rules,
             outdir=args.outdir,
+            preview=args.preview,
             verbose=args.verbose,
         )
 
         if args.verbose:
             print(f"[rules] processed")
-        print(f"[end] Written to {args.outdir}")
+        if args.preview:
+            print("[end] Preview only, no files written.")
+        else:
+            print(f"[end] Written to {args.outdir}")
+            print(f"[log] {log_path}")
         print(f"[summary] adds={counters['adds']} deletes={counters['deletes']} replaces={counters['replaces']} warns={counters['warns']}")
-        print(f"[log] {log_path}")
+        if warns:
+            print("[warns] " + " | ".join(warns))
     except CodedError as ce:
         emit_error(ce)
         sys.exit(1)
