@@ -1,0 +1,9 @@
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+pyinstaller --clean SAP-Role-Updater.spec
+git add .
+git commit -m "Prepare release v1.3.11"
+git push origin master
+git tag v1.3.11
+git push origin v1.3.11
+gh release create v1.3.11 "dist/SAP Role Updater.exe" "templates/RULES_template.csv" -t "SAP Role Updater v1.3.11" -F RELEASE_NOTES.md

@@ -1,48 +1,56 @@
-# Build Windows EXE (PySide6)
+# Build Guide
 
-## 1) Upgrade pip and install dependencies
+## Runtime Dependencies
 
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-## 2) Optional dependency audit
+## Development Dependencies
 
 ```bash
-python -m pip install pip-audit
-pip-audit
+python -m pip install -r requirements-dev.txt
 ```
 
-## 3) Clean previous artifacts
+## Local Checks Before Build
+
+```powershell
+python -m ruff check .
+python -m pytest
+python scripts\i18n_audit.py
+.\security_checks.ps1
+```
+
+## Clean Build
+
+Recommended:
+
+```powershell
+.\scripts\build.ps1
+```
+
+Manual equivalent:
 
 ```powershell
 if (Test-Path build) { Remove-Item -Recurse -Force build }
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }
-```
-
-## 4) Reproducible clean build
-
-```bash
 pyinstaller --clean SAP-Role-Updater.spec
 ```
 
-## 5) If Qt plugins are missing at runtime
+## If Qt Plugins Are Missing
 
 ```bash
 pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" --collect-all PySide6 main.py
 ```
 
-## 6) Optional local security checks
+## Build Notes
 
-```powershell
-.\security_checks.ps1
-```
-
-## Notes
-
-- Build with the same Python interpreter where `PySide6` is installed.
-- Do not package secrets, tokens, personal paths, or temporary outputs.
-- The EXE writes outputs only to the folder selected by the user.
-- Prefer a user-writable folder. Avoid `Program Files` and other privileged locations.
-- `SAP-Role-Updater.spec` includes `locales/*.json` and `templates/RULES_template.csv`.
+- The active code lives under `src/sap_role_updater/`.
+- Root files are compatibility wrappers and valid PyInstaller entrypoints.
+- Do not build from folders that contain real customer or productive SAP data.
+- Prefer user-writable output folders. Avoid `Program Files`.
+- Release assets expected after build:
+  - `dist/SAP Role Updater.exe`
+  - `templates/RULES_template.csv`
+  - `RELEASE_NOTES.md`

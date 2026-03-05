@@ -1,27 +1,27 @@
 # Security Checklist
 
-## Quick Run
+## Local Commands
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install pip-audit bandit
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m pytest
+python scripts\i18n_audit.py
 .\security_checks.ps1
 ```
 
-## Manual Commands
+## Review Points
+
+- No accidental secrets in the repo:
 
 ```powershell
-python -m ruff check .
-pip-audit
-bandit -r . -x .venv,build,dist
-python smoke_test.py
+rg -n "password|token|apikey|secret" .
 ```
 
-## What To Review
-
-- No accidental secrets in the repo (`rg -n "password|token|apikey|secret" .`)
-- Output files generated only inside the selected output folder
-- Large base/rules files rejected with clear SEV2 errors
-- GUI and CLI both handle errors without exposing full tracebacks by default
-- Privacy mode enabled when logs may contain sensitive LOW/HIGH values
+- Inputs rejected when paths are unsafe or files exceed limits
+- Preview mode writes no files
+- Processing writes outputs only inside the selected output folder
+- Privacy mode redacts LOW/HIGH in the log
+- GUI does not expose raw tracebacks by default
+- Optional metadata file contains only local hashes and run metadata

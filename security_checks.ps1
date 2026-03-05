@@ -11,6 +11,12 @@ if ($UpgradePip) {
 Write-Host "[ruff] python -m ruff check ."
 python -m ruff check .
 
+Write-Host "[pytest] python -m pytest"
+python -m pytest
+
+Write-Host "[i18n-audit] python scripts\\i18n_audit.py"
+python scripts\i18n_audit.py
+
 if (Get-Command pip-audit -ErrorAction SilentlyContinue) {
     Write-Host "[pip-audit] pip-audit"
     pip-audit

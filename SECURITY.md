@@ -1,63 +1,91 @@
-# Security Notes
+# Security
 
 ## Threat Model
 
-Entradas confiadas parcialmente:
+Trusted-but-risky local inputs:
 
-- Archivo base exportado desde SAP
-- Archivo `RULES.csv` preparado por usuario
-- Carpeta de salida elegida por usuario
+- SAP base export file
+- `RULES.csv`
+- output folder selected by the user
 
-Riesgos principales:
+Main risks for this offline desktop tool:
 
-- Escritura fuera de la carpeta de salida
-- Corrupcion de `_MOD` o del log por cortes a mitad de proceso
-- Denegacion de servicio por archivos muy grandes
-- Exposicion de valores sensibles en logs
-- Errores con demasiados detalles tecnicos visibles por defecto
-- Procesamiento desde shares de red no confiables
+- path traversal or writes outside the intended output folder
+- corrupt or partial outputs if the process stops mid-write
+- denial of service via very large files
+- sensitive LOW/HIGH values exposed in logs
+- too much technical detail shown to end users by default
+- use of untrusted network shares
 
-## Controles Implementados
+## Controls Implemented
 
-- Validacion de rutas con `pathlib` y resolucion explicita
-- Verificacion de que base y reglas sean archivos regulares
-- Verificacion de que salida sea carpeta existente y escribible
-- Bloqueo de path traversal en archivos finales (`_MOD`, `_MOD_LOG.txt`, `_MOD_META.json`)
-- Rechazo de rutas con caracteres de control y rutas demasiado largas en Windows
-- Escritura atomica usando archivos temporales + `os.replace`
-- Limites por tamano y lineas:
-  - base: 300 MB / 10,000,000 lineas
-  - reglas: 50 MB / 1,000,000 lineas
-- Warning SEV3 para rutas UNC/red, con confirmacion extra antes de procesar en GUI
-- Modo privacidad opcional para redactar LOW/HIGH en log y muestra GUI
-- Metadata local opcional con checksums SHA-256
-- GUI sin traceback completo por defecto; detalles tecnicos solo bajo demanda
-- CLI con mensajes limpios y opcion `--debug` para detalles
+### Path Safety
 
-## Uso Seguro Recomendado
+- `pathlib`-based normalization and resolution
+- input files must be regular files
+- output folder must already exist and be writable
+- final output targets are validated to remain inside the chosen output folder
+- control characters in paths are rejected
+- suspiciously long Windows paths are blocked
+- UNC/network paths generate SEV3 warnings and require confirmation in GUI before processing
 
-- Validar siempre antes de procesar
-- Probar primero en QA
-- Activar `--redact-log` si LOW/HIGH contienen valores sensibles
-- Activar `--write-meta` cuando necesites trazabilidad local
-- No compartir logs fuera del equipo sin revisar su contenido
-- Evitar shares de red si no controlas permisos y procedencia de los archivos
+### Safe Writes
 
-## Revisiones Recomendadas
+- `_MOD`, `_MOD_LOG.txt`, and optional `_MOD_META.json` use temp file + atomic replace
+- cancellation does not leave final partial outputs behind
 
-- Ejecutar `.\security_checks.ps1`
-- Ejecutar `python smoke_test.py`
-- Revisar cambios con `git diff --stat`
-- Escanear secretos antes de publicar:
+### Limits / DoS Protection
 
-```powershell
-rg -n "password|token|apikey|secret" .
-```
+- base export default limit: `300 MB`, `10,000,000` lines
+- rules file default limit: `50 MB`, `1,000,000` lines
+- limits are centralized in `src/sap_role_updater/utils/settings.py`
 
-## Reporte De Issues
+### Input Validation
 
-Si encuentras un problema de seguridad:
+- strict `RULES.csv` header validation
+- strict SAP field length and format validation
+- no heuristics or silent inference for missing fields
 
-1. Reproduce con un caso minimo.
-2. Guarda el codigo de error y el mensaje.
-3. Adjunta solo el detalle tecnico necesario, evitando compartir LOW/HIGH sensibles.
+### Logging / Privacy
+
+- optional privacy mode redacts LOW/HIGH values in the GUI sample and log
+- no network logging or telemetry
+- GUI hides tracebacks by default and shows technical details only on demand
+
+### Dependency Checks
+
+- `ruff`, `pytest`, `bandit`, and `pip-audit` are documented and scriptable
+
+## Offline Data Handling
+
+The tool does not transmit data to the internet.
+
+Generated files remain local:
+
+- `<base>_MOD`
+- `<base>_MOD_LOG.txt`
+- optional `<base>_MOD_META.json`
+
+## Secure Usage Recommendations
+
+- Work from QA-approved input files only
+- Prefer local folders over network shares
+- Use privacy mode if logs may expose sensitive values
+- Review `_MOD_LOG.txt` before importing into SAP
+- Test in QA before productive use
+
+## Security Review Commands
+
+See:
+
+- `SECURITY_CHECKLIST.md`
+- `security_checks.ps1`
+
+## Reporting
+
+When reporting a security issue internally, include:
+
+- app version
+- exact error code
+- minimal reproduction steps
+- sanitized sample files if needed

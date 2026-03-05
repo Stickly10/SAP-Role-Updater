@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    pathex=['src'],
     binaries=[],
     datas=[('locales\\*.json', 'locales'), ('templates\\RULES_template.csv', 'templates')],
     hiddenimports=[],

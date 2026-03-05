@@ -1,25 +1,39 @@
-# SAP Role Updater v1.3.10
+# SAP Role Updater v1.3.11
+
+## Release Summary
+
+This release focuses on release-readiness, engineering quality, and maintainability without changing the functional role-update algorithm.
 
 ## Added
 
-- Security hardening for path validation, file size limits, and line count limits.
-- Optional privacy mode for logs (`--redact-log` / `Log privado`).
-- Optional local metadata file with SHA-256 checksums (`--write-meta` / `Meta SHA-256`).
-- `SECURITY.md`, `SECURITY_CHECKLIST.md`, and `security_checks.ps1`.
+- `src/sap_role_updater/` package structure
+- `pytest` suite and safe fixtures
+- CI workflow for lint, tests, i18n audit, and Windows build
+- Accessibility improvements in the PySide6 GUI
+- Documentation pack:
+  - `ARCHITECTURE.md`
+  - `HELP.md`
+  - `PRIVACY.md`
+  - `USAGE.md`
+  - `PROJECT_AUDIT.md`
+  - `ROADMAP.md`
+  - `DEFINITION_OF_DONE.md`
+  - `QA_CHECKLIST.md`
+- Release helper scripts and commands
 
 ## Improved
 
-- Atomic writes for `_MOD`, `_MOD_LOG.txt`, and optional `_MOD_META.json`.
-- Cleaner CLI error handling with optional `--debug`.
-- GUI error dialogs now hide technical details by default and expose them only on demand.
-- README and build instructions updated for secure usage and reproducible builds.
-- Dependencies pinned in `requirements.txt`.
+- Central settings and resource path handling
+- Cleaner package boundaries: core, gui, utils
+- Reproducible build and dev workflow documentation
+- Security checklist aligned with the actual offline threat model
 
 ## Compatibility Notes
 
-- Core replacement algorithm is unchanged.
+- Core replacement algorithm remains unchanged
+- Final MOD format remains unchanged
 - Standard outputs remain:
   - `<base>_MOD`
   - `<base>_MOD_LOG.txt`
-- Optional extra output:
+- Optional output remains:
   - `<base>_MOD_META.json`

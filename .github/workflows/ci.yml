@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Ruff
+        run: python -m ruff check .
+      - name: Pytest
+        run: python -m pytest
+      - name: i18n audit
+        run: python scripts/i18n_audit.py
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Build EXE dry-run
+        run: pyinstaller --clean SAP-Role-Updater.spec

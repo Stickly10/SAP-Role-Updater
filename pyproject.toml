@@ -1,0 +1,23 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "BLE"]
+
+[tool.ruff.lint.per-file-ignores]
+"SAP-Role-Updater.py" = ["I001"]
+"main.py" = ["E402"]
+"error_handler.py" = ["E402"]
+"gui_pyside6.py" = ["E402"]
+"i18n.py" = ["E402"]
+"theme.py" = ["E402"]
+"version.py" = ["E402"]
+"security_utils.py" = ["E402"]
+"sap_role_updater_core.py" = ["E402"]
+"src/sap_role_updater/gui/theme.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

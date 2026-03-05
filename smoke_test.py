@@ -50,7 +50,8 @@ def run_case(
         assert res["log_path"] == "", f"{name}: preview no debe generar log_path"
         assert res.get("meta_path", "") == "", f"{name}: preview no debe generar meta_path"
         assert bool(res.get("has_validation_errors", False)) == expect_validation_error, (
-            f"{name}: has_validation_errors esperado={expect_validation_error} actual={res.get('has_validation_errors')}"
+            f"{name}: has_validation_errors esperado={expect_validation_error} "
+            f"actual={res.get('has_validation_errors')}"
         )
         if write_meta:
             assert res.get("checksums", {}).get("base_sha256"), f"{name}: falta checksum base"

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
-"""Single source of truth for application version."""
+"""Backward-compatible version wrapper."""
 
-APP_VERSION = "1.3.10"
+from _bootstrap import ensure_src_on_path
+
+ensure_src_on_path()
+
+from sap_role_updater.version import *  # noqa: F403

@@ -1,37 +1,43 @@
-# SAP Role Updater v1.3.10
+# SAP Role Updater v1.3.11
 
 Herramienta de escritorio para preparar cambios masivos de roles SAP antes de cargarlos en PFCG.
 
-Toma un archivo base exportado desde Mass Download y un `RULES.csv`, valida reglas y genera:
+La herramienta toma:
 
-- Archivo modificado (`_MOD`)
-- Log tabulado (`_MOD_LOG.txt`)
-- Metadata local opcional (`_MOD_META.json`)
+- un archivo base exportado desde `PFCG Mass Download`
+- un `RULES.csv`
 
-No altera tablas no objetivo y mantiene la logica de reemplazo existente.
+Y genera localmente:
+
+- `<base>_MOD`
+- `<base>_MOD_LOG.txt`
+- opcional `<base>_MOD_META.json`
+
+No cambia la logica funcional del algoritmo de reemplazo ni el formato final del MOD.
 
 ## Requisitos
 
 - Windows 10/11
-- Para usuario final: no requiere Python si usas `SAP Role Updater.exe` del release
-- Para desarrollo: Python 3.9+ y dependencias de `requirements.txt`
+- Para uso funcional: no necesitas Python si usas `SAP Role Updater.exe`
+- Para desarrollo: Python 3.11 y dependencias de `requirements.txt`
 
-## Flujo Para Consultor SAP
+## Paso A Paso Para Consultor SAP
 
-1. Exporta roles desde PFCG (Mass Download).
-2. Guarda el archivo base (puede venir sin extension o como `.sap`).
+1. Exporta el rol o conjunto de roles desde `PFCG Mass Download`.
+2. Guarda el archivo base. Puede venir sin extension o como `.sap`.
 3. Prepara `RULES.csv` usando `templates/RULES_template.csv`.
 4. Abre `SAP Role Updater.exe`.
-5. Selecciona Base, Reglas y Carpeta de salida.
-6. Pulsa **Validar**:
-   - Errores `SEV1/SEV2`: bloquean **Procesar**
-   - Advertencias `SEV3`: permiten continuar, pero deben revisarse
-7. Pulsa **Procesar**.
-8. Revisa:
-   - `<base>_MOD`
-   - `<base>_MOD_LOG.txt`
-   - `<base>_MOD_META.json` si activaste metadata
-9. Carga el `_MOD` en PFCG y prueba primero en QA.
+5. Selecciona:
+   - Base
+   - Reglas
+   - Carpeta de salida
+6. Ejecuta **Validar**.
+7. Revisa:
+   - `Errores (SEV1/SEV2)`: bloquean **Procesar**
+   - `Advertencias (SEV3)`: permiten continuar, pero deben revisarse
+8. Ejecuta **Procesar**.
+9. Revisa `_MOD_LOG.txt`.
+10. Carga el `_MOD` en QA antes de usarlo en PRD.
 
 ## Estructura De RULES.csv
 
@@ -47,21 +53,19 @@ Columnas obligatorias:
 - `LOW`
 - `HIGH`
 
-Reglas clave:
+Reglas principales:
 
 - `ACTION`: solo `replace_list`
 - `TABLE`: solo `AGR_1251` o `AGR_1252`
-- `MANDT`: 3 digitos (ej. `100`)
-- `AGR_NAME`: sin espacios, max 30
-- `LOW/HIGH`: opcionales, max 40 por valor
-- Listas: usar `|` o `,` (`0*|A*`, `9*|Z*`)
+- `MANDT`: exactamente 3 digitos
+- `AGR_NAME`: sin espacios, maximo 30 caracteres
+- `LOW` y `HIGH`: opcionales, maximo 40 caracteres por valor
+- listas: usar `|` o `,`
 
-Dependiendo de `TABLE`:
+Dependencias por tabla:
 
-- `AGR_1251`: `OBJECT` y `AUTH` obligatorios
-- `AGR_1252`: `FIELD` tipo VARBL (ej. `$WERKS`), `OBJECT/AUTH` se ignoran
-
-## Ejemplos
+- `AGR_1251`: requiere `OBJECT`, `AUTH`, `FIELD`
+- `AGR_1252`: requiere `FIELD` tipo `VARBL`, por ejemplo `$WERKS`
 
 Ejemplo `AGR_1251`:
 
@@ -75,20 +79,41 @@ Ejemplo `AGR_1252`:
 replace_list,AGR_1252,100,Z:FSBP_CRM_ZSALSPRO_EXT_1004,,,$WERKS,0*|A*,9*|Z*
 ```
 
+## Errores Comunes
+
+- Faltan columnas obligatorias en el header
+- `MANDT` no tiene 3 digitos
+- `AGR_NAME` tiene espacios o supera 30 caracteres
+- `FIELD` de `AGR_1252` no empieza por `$`
+- algun valor de `LOW/HIGH` supera 40 caracteres
+- la regla no encuentra lineas base coincidentes
+
+## Interfaz
+
+- **Idioma**: cambia entre `Espanol (ES)` y `English (EN)` sin reiniciar
+- **Modo oscuro**: toggle animado, persistente
+- **Ayuda**: boton `?` con quick start
+- **Log privado**: redacta `LOW/HIGH` en log y muestra GUI
+- **Meta SHA-256**: genera `_MOD_META.json` opcional para auditoria local
+
 ## Seguridad Y Buenas Practicas
 
-- Valida y prueba en QA antes de cargar en PRD.
-- Si el log puede contener valores sensibles, activa **Log privado** o usa `--redact-log`.
-- No compartas `_MOD_LOG.txt` fuera del equipo si contiene LOW/HIGH sensibles.
-- Si necesitas trazabilidad local, activa **Meta SHA-256** o usa `--write-meta`.
-- Evita procesar desde rutas de red si no controlas permisos e integridad del share.
-- La aplicacion rechaza archivos demasiado grandes, rutas inseguras y salidas fuera de la carpeta elegida.
+- La herramienta no envia informacion a internet
+- Si el log puede contener valores sensibles, activa `Log privado`
+- Si necesitas trazabilidad local, activa `Meta SHA-256`
+- Evita shares de red si no controlas permisos e integridad
+- La aplicacion rechaza rutas inseguras, archivos demasiado grandes y salidas fuera de la carpeta elegida
 
-Mas detalle tecnico en `SECURITY.md`.
+Documentos relacionados:
 
-## Compatibilidad CLI
+- `HELP.md`
+- `SECURITY.md`
+- `PRIVACY.md`
+- `USAGE.md`
 
-CLI base:
+## CLI
+
+Proceso normal:
 
 ```bash
 python main.py --in <base> --rules <rules> --outdir <outdir> --lang es
@@ -106,16 +131,19 @@ Opciones de seguridad:
 python main.py --in <base> --rules <rules> --outdir <outdir> --redact-log --write-meta --debug
 ```
 
-## Notas De Log
+## Desarrollo
 
-El archivo log se mantiene en formato tabulado estable (`.txt`) para compatibilidad:
-
-- Header: `action`, `before`, `after`
-- Delimitador: tab (`\t`)
-
-## Checks Locales
+Checks locales:
 
 ```powershell
+python -m ruff check .
+python -m pytest
+python scripts\i18n_audit.py
 .\security_checks.ps1
-python smoke_test.py
+```
+
+Build:
+
+```powershell
+.\scripts\build.ps1
 ```
