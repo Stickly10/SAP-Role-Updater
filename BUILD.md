@@ -6,16 +6,24 @@
 pip install -r requirements.txt
 ```
 
-## 2) Build one-file executable
+## 2) Clean previous artifacts
 
 ```bash
-pyinstaller --noconsole --onefile --name "SAP Role Updater" main.py
+# PowerShell
+if (Test-Path build) { Remove-Item -Recurse -Force build }
+if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 ```
 
-## 3) If Qt plugins are missing at runtime
+## 3) Build one-file executable (clean)
 
 ```bash
-pyinstaller --noconsole --onefile --name "SAP Role Updater" --collect-all PySide6 main.py
+pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" main.py
+```
+
+## 4) If Qt plugins are missing at runtime
+
+```bash
+pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" --collect-all PySide6 main.py
 ```
 
 ## Basic troubleshooting

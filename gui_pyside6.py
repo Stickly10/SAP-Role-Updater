@@ -7,8 +7,8 @@ import os
 import sys
 import traceback
 
-from PySide6.QtCore import QAbstractTableModel, QObject, QRegularExpression, QSortFilterProxyModel, Qt, QThread, Signal
-from PySide6.QtGui import QDesktopServices, QFont, QPalette, QUrl
+from PySide6.QtCore import QAbstractTableModel, QObject, QRegularExpression, QSortFilterProxyModel, Qt, QThread, Signal, QUrl
+from PySide6.QtGui import QDesktopServices, QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
