@@ -7,10 +7,12 @@ import os
 import sys
 import traceback
 
-from PySide6.QtCore import QAbstractTableModel, QObject, QRegularExpression, QSortFilterProxyModel, Qt, QThread, Signal, QUrl
-from PySide6.QtGui import QDesktopServices, QFont, QPalette
+from PySide6.QtCore import QAbstractTableModel, QObject, QRegularExpression, QSettings, QSortFilterProxyModel, Qt, QThread, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QProgressBar,
+    QStyle,
     QTableView,
     QTabWidget,
     QVBoxLayout,
@@ -29,42 +32,9 @@ from PySide6.QtWidgets import (
 )
 
 from error_handler import CodedError
+from i18n import detect_system_language, load_locales, set_language, t
 from sap_role_updater_core import build_entries, build_output_paths, parse_entry_1251, parse_entry_1252, parse_rules, read_text, run_job_ex
-
-
-def _apply_dark_theme(app: QApplication):
-    app.setStyle("Fusion")
-    app.setFont(QFont("Segoe UI", 10))
-    palette = QPalette()
-    palette.setColor(QPalette.Window, Qt.black)
-    palette.setColor(QPalette.WindowText, Qt.white)
-    palette.setColor(QPalette.Base, Qt.black)
-    palette.setColor(QPalette.AlternateBase, Qt.black)
-    palette.setColor(QPalette.ToolTipBase, Qt.white)
-    palette.setColor(QPalette.ToolTipText, Qt.white)
-    palette.setColor(QPalette.Text, Qt.white)
-    palette.setColor(QPalette.Button, Qt.black)
-    palette.setColor(QPalette.ButtonText, Qt.white)
-    palette.setColor(QPalette.BrightText, Qt.red)
-    palette.setColor(QPalette.Highlight, Qt.blue)
-    palette.setColor(QPalette.HighlightedText, Qt.white)
-    app.setPalette(palette)
-    app.setStyleSheet(
-        """
-        QMainWindow, QWidget { background-color: #1E1E1E; color: #E5E7EB; }
-        QGroupBox { border: 1px solid #3F3F46; border-radius: 8px; margin-top: 12px; font-weight: 600; }
-        QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }
-        QLineEdit, QTableView { background: #111827; border: 1px solid #374151; border-radius: 6px; padding: 6px; }
-        QPushButton { background: #374151; border: 1px solid #4B5563; border-radius: 6px; padding: 6px 10px; }
-        QPushButton:hover { background: #4B5563; }
-        QPushButton#primaryButton { background: #2563EB; border-color: #2563EB; color: white; font-weight: 700; }
-        QPushButton#primaryButton:hover { background: #1D4ED8; }
-        QPushButton#cancelButton { background: #B91C1C; border-color: #B91C1C; color: white; font-weight: 700; }
-        QHeaderView::section { background: #111827; border: 0; border-right: 1px solid #374151; border-bottom: 1px solid #374151; padding: 6px; }
-        QTabBar::tab { background: #111827; border: 1px solid #374151; border-bottom: 0; padding: 8px 12px; margin-right: 3px; }
-        QTabBar::tab:selected { background: #1F2937; }
-        """
-    )
+from theme import ThemeManager
 
 
 class MultiColumnFilterProxy(QSortFilterProxyModel):
@@ -84,13 +54,17 @@ class MultiColumnFilterProxy(QSortFilterProxyModel):
 class DictTableModel(QAbstractTableModel):
     def __init__(self, columns, parent=None):
         super().__init__(parent)
-        self.columns = columns
+        self.columns = columns  # [(data_key, i18n_header_key)]
         self.rows = []
 
     def set_rows(self, rows):
         self.beginResetModel()
         self.rows = rows
         self.endResetModel()
+
+    def refresh_headers(self):
+        if self.columnCount() > 0:
+            self.headerDataChanged.emit(Qt.Horizontal, 0, self.columnCount() - 1)
 
     def rowCount(self, parent=None):  # noqa: N802
         return len(self.rows)
@@ -114,7 +88,7 @@ class DictTableModel(QAbstractTableModel):
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:
-            return self.columns[section][1]
+            return t(self.columns[section][1])
         return str(section + 1)
 
 
@@ -157,8 +131,13 @@ class JobWorker(QObject):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, version):
+    def __init__(self, version, initial_language=None):
         super().__init__()
+        load_locales()
+        self.settings = QSettings("Txool", "SAPRoleUpdater")
+        saved_lang = (self.settings.value("language", "", type=str) or "").strip().lower()
+        lang = initial_language or saved_lang or detect_system_language(default="es")
+        set_language(lang)
         self.version = version
         self.base_path = ""
         self.rules_path = ""
@@ -173,9 +152,17 @@ class MainWindow(QMainWindow):
         self.rules_ok = False
         self.rules_has_validation_errors = False
         self.last_result_has_validation_errors = False
-        self.setWindowTitle(f"SAP Role Updater {version}")
+        self._suppress_result_dialog = False
+        self.setWindowTitle(t("app.window_title", version=version))
         self.resize(1300, 860)
         self._build_ui()
+        saved_theme = (self.settings.value("theme", "dark", type=str) or "dark").strip().lower()
+        self.chk_dark.blockSignals(True)
+        self.chk_dark.setChecked(saved_theme != "light")
+        self.chk_dark.blockSignals(False)
+        self._apply_theme(save=False)
+        self._set_language_combo(lang)
+        self.retranslate_ui()
         self._refresh_stepper()
         self._refresh_guardrails()
 
@@ -186,14 +173,28 @@ class MainWindow(QMainWindow):
 
         header = QFrame()
         header_layout = QVBoxLayout(header)
-        title = QLabel(f"SAP Role Updater {self.version}")
-        title.setStyleSheet("font-size: 20px; font-weight: 700;")
-        header_layout.addWidget(title)
+        top = QHBoxLayout()
+        self.title = QLabel()
+        self.title.setStyleSheet("font-size: 20px; font-weight: 700;")
+        self.lbl_language = QLabel()
+        self.cmb_language = QComboBox()
+        self.cmb_language.addItem("", "es")
+        self.cmb_language.addItem("", "en")
+        self.cmb_language.currentIndexChanged.connect(self._on_language_changed)
+        self.chk_dark = QCheckBox()
+        self.chk_dark.toggled.connect(self._on_theme_toggled)
+        top.addWidget(self.title)
+        top.addStretch(1)
+        top.addWidget(self.lbl_language)
+        top.addWidget(self.cmb_language)
+        top.addSpacing(12)
+        top.addWidget(self.chk_dark)
+        header_layout.addLayout(top)
         steps = QHBoxLayout()
-        self.step_base = QLabel("\u2460 Base")
-        self.step_rules = QLabel("\u2461 Reglas")
-        self.step_out = QLabel("\u2462 Salida")
-        self.step_run = QLabel("\u2463 Validar/Procesar")
+        self.step_base = QLabel("1")
+        self.step_rules = QLabel("2")
+        self.step_out = QLabel("3")
+        self.step_run = QLabel("4")
         for w in (self.step_base, self.step_rules, self.step_out, self.step_run):
             w.setStyleSheet("padding: 4px 10px; border: 1px solid #374151; border-radius: 8px;")
             steps.addWidget(w)
@@ -201,32 +202,29 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(steps)
         layout.addWidget(header)
 
-        self.base_edit, self.base_detail, self.base_indicator = self._add_path_group(
+        self.base_group, self.base_edit, self.base_detail, self.base_indicator = self._add_path_group(
             layout,
-            "Paso 1: Archivo Base (PFCG Mass Download)",
             self._pick_base,
-            "\U0001F4C2",
+            QStyle.SP_FileIcon,
         )
-        self.rules_edit, self.rules_detail, self.rules_indicator = self._add_path_group(
+        self.rules_group, self.rules_edit, self.rules_detail, self.rules_indicator = self._add_path_group(
             layout,
-            "Paso 2: Reglas (CSV AGR_1251/AGR_1252)",
             self._pick_rules,
-            "\U0001F4C2",
+            QStyle.SP_FileIcon,
         )
-        self.out_edit, self.out_detail, self.out_indicator = self._add_path_group(
+        self.out_group, self.out_edit, self.out_detail, self.out_indicator = self._add_path_group(
             layout,
-            "Paso 3: Carpeta de salida",
             self._pick_outdir,
-            "\U0001F4C1",
+            QStyle.SP_DirOpenIcon,
         )
 
         actions = QHBoxLayout()
-        self.btn_validate = QPushButton("Validar")
+        self.btn_validate = QPushButton()
         self.btn_validate.clicked.connect(lambda: self._start_job(preview=True))
-        self.btn_process = QPushButton("Procesar y generar _MOD")
+        self.btn_process = QPushButton()
         self.btn_process.setObjectName("primaryButton")
         self.btn_process.clicked.connect(lambda: self._start_job(preview=False))
-        self.btn_cancel = QPushButton("Cancelar")
+        self.btn_cancel = QPushButton()
         self.btn_cancel.setObjectName("cancelButton")
         self.btn_cancel.clicked.connect(self._cancel_job)
         self.btn_cancel.setVisible(False)
@@ -235,7 +233,7 @@ class MainWindow(QMainWindow):
         self.progress.setMaximum(100)
         self.progress.setValue(0)
         self.progress.setTextVisible(True)
-        self.status_label = QLabel("Listo.")
+        self.status_label = QLabel()
         actions.addWidget(self.btn_validate)
         actions.addWidget(self.btn_process)
         actions.addWidget(self.btn_cancel)
@@ -250,9 +248,9 @@ class MainWindow(QMainWindow):
         self._build_changes_tab()
 
         footer = QHBoxLayout()
-        self.btn_open_outdir = QPushButton("Abrir carpeta salida")
+        self.btn_open_outdir = QPushButton()
         self.btn_open_outdir.clicked.connect(lambda: self._open_local(self.outdir_path))
-        self.btn_open_log = QPushButton("Abrir log")
+        self.btn_open_log = QPushButton()
         self.btn_open_log.clicked.connect(lambda: self._open_local(self.current_log_path))
         self.btn_open_outdir.setEnabled(False)
         self.btn_open_log.setEnabled(False)
@@ -261,67 +259,68 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.btn_open_log)
         layout.addLayout(footer)
 
-    def _add_path_group(self, parent_layout, title, browse_fn, icon_text):
-        box = QGroupBox(title)
+    def _add_path_group(self, parent_layout, browse_fn, icon_kind):
+        box = QGroupBox()
         lay = QGridLayout(box)
         edit = QLineEdit()
         edit.setReadOnly(True)
-        btn = QPushButton(icon_text)
+        btn = QPushButton()
         btn.setFixedWidth(42)
+        btn.setIcon(self.style().standardIcon(icon_kind))
         btn.clicked.connect(browse_fn)
-        detail = QLabel("Sin seleccionar.")
+        detail = QLabel(t("detail.not_selected"))
         detail.setStyleSheet("color: #9CA3AF;")
         detail.setWordWrap(True)
-        indicator = QLabel("⚠")
+        indicator = QLabel("!")
         indicator.setStyleSheet("font-size: 18px;")
         lay.addWidget(edit, 0, 0)
         lay.addWidget(btn, 0, 1)
         lay.addWidget(indicator, 0, 2)
         lay.addWidget(detail, 1, 0, 1, 3)
         parent_layout.addWidget(box)
-        return edit, detail, indicator
+        return box, edit, detail, indicator
 
     def _build_summary_tab(self):
         tab = QWidget()
         lay = QVBoxLayout(tab)
         counters = QHBoxLayout()
-        self.lbl_adds = QLabel("Adds: 0")
-        self.lbl_deletes = QLabel("Deletes: 0")
-        self.lbl_replaces = QLabel("Replaces: 0")
-        self.lbl_warns = QLabel("Warns: 0")
-        self.lbl_errors = QLabel("Errores (SEV1/SEV2): 0")
-        self.lbl_warnings = QLabel("Advertencias (SEV3): 0")
+        self.lbl_adds = QLabel()
+        self.lbl_deletes = QLabel()
+        self.lbl_replaces = QLabel()
+        self.lbl_warns = QLabel()
+        self.lbl_errors = QLabel()
+        self.lbl_warnings = QLabel()
         for w in (self.lbl_adds, self.lbl_deletes, self.lbl_replaces, self.lbl_warns, self.lbl_errors, self.lbl_warnings):
             w.setStyleSheet("font-size: 18px; font-weight: 700;")
             counters.addWidget(w)
         counters.addStretch(1)
         lay.addLayout(counters)
-        self.lbl_summary_state = QLabel("Sin ejecucion.")
+        self.lbl_summary_state = QLabel()
         self.lbl_summary_state.setStyleSheet("font-size: 16px; font-weight: 700;")
         lay.addWidget(self.lbl_summary_state)
-        self.lbl_base_stats = QLabel("Base: -")
-        self.lbl_rules_stats = QLabel("Reglas: -")
+        self.lbl_base_stats = QLabel()
+        self.lbl_rules_stats = QLabel()
         self.lbl_base_stats.setWordWrap(True)
         self.lbl_rules_stats.setWordWrap(True)
         lay.addWidget(self.lbl_base_stats)
         lay.addWidget(self.lbl_rules_stats)
         lay.addStretch(1)
-        self.tabs.addTab(tab, "Resumen")
+        self.tabs.addTab(tab, "")
 
     def _build_warns_tab(self):
         tab = QWidget()
         lay = QVBoxLayout(tab)
         self.warn_search = QLineEdit()
-        self.warn_search.setPlaceholderText("Buscar...")
+        self.warn_search.setPlaceholderText(t("search.placeholder"))
         self.warn_model = DictTableModel(
             [
-                ("code", "code"),
-                ("severity", "severity"),
-                ("row", "row"),
-                ("table", "table"),
-                ("role", "role"),
-                ("field", "field"),
-                ("detail", "detail"),
+                ("code", "col.code"),
+                ("severity", "col.severity"),
+                ("row", "col.row"),
+                ("table", "col.table"),
+                ("role", "col.role"),
+                ("field", "col.field"),
+                ("detail", "col.detail"),
             ]
         )
         self.warn_proxy = MultiColumnFilterProxy(self)
@@ -334,21 +333,21 @@ class MainWindow(QMainWindow):
         self.warn_table.setWordWrap(True)
         lay.addWidget(self.warn_search)
         lay.addWidget(self.warn_table)
-        self.tabs.addTab(tab, "Advertencias")
+        self.tabs.addTab(tab, "")
 
     def _build_changes_tab(self):
         tab = QWidget()
         lay = QVBoxLayout(tab)
         self.change_search = QLineEdit()
-        self.change_search.setPlaceholderText("Buscar...")
+        self.change_search.setPlaceholderText(t("search.placeholder"))
         self.change_model = DictTableModel(
             [
-                ("action", "action"),
-                ("table", "table"),
-                ("role", "role"),
-                ("field_key", "field/key"),
-                ("before", "before"),
-                ("after", "after"),
+                ("action", "col.action"),
+                ("table", "col.table"),
+                ("role", "col.role"),
+                ("field_key", "col.field_key"),
+                ("before", "col.before"),
+                ("after", "col.after"),
             ]
         )
         self.change_proxy = MultiColumnFilterProxy(self)
@@ -361,7 +360,89 @@ class MainWindow(QMainWindow):
         self.change_table.setWordWrap(True)
         lay.addWidget(self.change_search)
         lay.addWidget(self.change_table)
-        self.tabs.addTab(tab, "Cambios")
+        self.tabs.addTab(tab, "")
+
+    def _set_language_combo(self, lang_code):
+        idx = self.cmb_language.findData(lang_code)
+        if idx < 0:
+            idx = self.cmb_language.findData("es")
+        self.cmb_language.blockSignals(True)
+        self.cmb_language.setCurrentIndex(max(idx, 0))
+        self.cmb_language.blockSignals(False)
+
+    def _refresh_theme_toggle(self):
+        dark = self.chk_dark.isChecked()
+        icon_kind = QStyle.SP_TitleBarShadeButton if dark else QStyle.SP_TitleBarUnshadeButton
+        self.chk_dark.setIcon(self.style().standardIcon(icon_kind))
+        self.chk_dark.setText(t("theme.dark_mode"))
+        self.chk_dark.setToolTip(t("theme.dark_icon") if dark else t("theme.light_icon"))
+
+    def _apply_theme(self, save=True):
+        if self.chk_dark.isChecked():
+            ThemeManager.apply_dark(QApplication.instance())
+            if save:
+                self.settings.setValue("theme", "dark")
+        else:
+            ThemeManager.apply_light(QApplication.instance())
+            if save:
+                self.settings.setValue("theme", "light")
+        self._refresh_theme_toggle()
+
+    def _on_theme_toggled(self):
+        self._apply_theme(save=True)
+
+    def _on_language_changed(self):
+        code = self.cmb_language.currentData()
+        set_language(code)
+        self.settings.setValue("language", code)
+        self.retranslate_ui()
+        self._refresh_guardrails()
+
+    def retranslate_ui(self):
+        self.setWindowTitle(t("app.window_title", version=self.version))
+        self.title.setText(t("app.window_title", version=self.version))
+        self.lbl_language.setText(t("header.language"))
+        self.cmb_language.setItemText(0, t("header.lang.es"))
+        self.cmb_language.setItemText(1, t("header.lang.en"))
+        self.base_group.setTitle(t("group.base"))
+        self.rules_group.setTitle(t("group.rules"))
+        self.out_group.setTitle(t("group.output"))
+        self.btn_validate.setText(t("btn.validate"))
+        self.btn_process.setText(t("btn.process"))
+        self.btn_cancel.setText(t("btn.cancel"))
+        self.btn_open_outdir.setText(t("btn.open_output"))
+        self.btn_open_log.setText(t("btn.open_log"))
+        self.warn_search.setPlaceholderText(t("search.placeholder"))
+        self.change_search.setPlaceholderText(t("search.placeholder"))
+        self.tabs.setTabText(0, t("tab.summary"))
+        self.tabs.setTabText(1, t("tab.warns"))
+        self.tabs.setTabText(2, t("tab.changes"))
+        self.warn_model.refresh_headers()
+        self.change_model.refresh_headers()
+        self._refresh_theme_toggle()
+        self._refresh_stepper()
+        if not self.base_path:
+            self.base_detail.setText(t("detail.not_selected"))
+        if not self.rules_path:
+            self.rules_detail.setText(t("detail.not_selected"))
+        if self.last_result is None:
+            self.status_label.setText(t("status.ready"))
+            self._set_summary_defaults()
+        else:
+            self._suppress_result_dialog = True
+            self._on_worker_finished(self.last_result)
+            self._suppress_result_dialog = False
+
+    def _set_summary_defaults(self):
+        self.lbl_adds.setText(t("summary.adds", n=0))
+        self.lbl_deletes.setText(t("summary.deletes", n=0))
+        self.lbl_replaces.setText(t("summary.replaces", n=0))
+        self.lbl_warns.setText(t("summary.warns", n=0))
+        self.lbl_errors.setText(t("summary.errors", n=0))
+        self.lbl_warnings.setText(t("summary.warnings", n=0))
+        self.lbl_summary_state.setText(t("summary.state.idle"))
+        self.lbl_base_stats.setText(t("summary.base", enc="-", lines=0, roles=0, c1=0, c2=0))
+        self.lbl_rules_stats.setText(t("summary.rules", delim="-", rules=0, roles=0, tables="-"))
 
     def _filter_warns(self, text):
         self.warn_proxy.setFilterRegularExpression(QRegularExpression(text, QRegularExpression.CaseInsensitiveOption))
@@ -370,7 +451,7 @@ class MainWindow(QMainWindow):
         self.change_proxy.setFilterRegularExpression(QRegularExpression(text, QRegularExpression.CaseInsensitiveOption))
 
     def _pick_base(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Selecciona archivo base", "", "All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, t("dialog.pick_base"), "", "All files (*)")
         if not path:
             return
         self.base_path = path
@@ -382,7 +463,7 @@ class MainWindow(QMainWindow):
         self._refresh_guardrails()
 
     def _pick_rules(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Selecciona reglas", "", "CSV/TSV (*.csv *.tsv);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, t("dialog.pick_rules"), "", "CSV/TSV (*.csv *.tsv);;All files (*)")
         if not path:
             return
         self.rules_path = path
@@ -393,7 +474,7 @@ class MainWindow(QMainWindow):
         self._refresh_guardrails()
 
     def _pick_outdir(self):
-        path = QFileDialog.getExistingDirectory(self, "Selecciona carpeta de salida")
+        path = QFileDialog.getExistingDirectory(self, t("dialog.pick_outdir"))
         if not path:
             return
         self.outdir_path = path
@@ -418,14 +499,14 @@ class MainWindow(QMainWindow):
                 elif e["table_type"] == "AGR_1252":
                     c1252 += 1
             self.base_detail.setText(
-                f"encoding={enc} | total_lineas={len(lines)} | roles_unicos={len(roles)} | AGR_1251={c1251} | AGR_1252={c1252}"
+                t("detail.base_stats", enc=enc, lines=len(lines), roles=len(roles), c1251=c1251, c1252=c1252)
             )
             self.base_ok = True
-            self.base_indicator.setText("✅")
+            self.base_indicator.setText("OK")
         except Exception as ex:  # noqa: BLE001
             self.base_ok = False
-            self.base_indicator.setText("⚠")
-            self.base_detail.setText(f"Error leyendo base: {ex}")
+            self.base_indicator.setText("!")
+            self.base_detail.setText(f"{t('dialog.error_title')}: {ex}")
         self._refresh_stepper()
 
     def _analyze_rules(self):
@@ -436,7 +517,8 @@ class MainWindow(QMainWindow):
             self.rules_has_validation_errors = bool(meta.get("has_validation_errors", False))
             tables = ", ".join(rs.get("tables_touched", [])) or "-"
             self.rules_detail.setText(
-                "delimiter={delim} | filas={rows} | roles_unicos={roles} | tablas={tables} | columnas_ok={cols} | errores_validacion={errs}".format(
+                t(
+                    "detail.rules_stats",
                     delim=meta.get("delimiter_detected", ""),
                     rows=rs.get("rules_loaded", 0),
                     roles=rs.get("roles_unique", 0),
@@ -446,28 +528,30 @@ class MainWindow(QMainWindow):
                 )
             )
             self.rules_ok = True
-            self.rules_indicator.setText("⚠" if self.rules_has_validation_errors else "✅")
+            self.rules_indicator.setText("!" if self.rules_has_validation_errors else "OK")
         except CodedError as ce:
             self.rules_ok = False
             self.rules_has_validation_errors = True
-            self.rules_indicator.setText("⚠")
+            self.rules_indicator.setText("!")
             self.rules_detail.setText(f"{ce.code}: {ce.message}")
         except Exception as ex:  # noqa: BLE001
             self.rules_ok = False
             self.rules_has_validation_errors = True
-            self.rules_indicator.setText("⚠")
-            self.rules_detail.setText(f"Error leyendo reglas: {ex}")
+            self.rules_indicator.setText("!")
+            self.rules_detail.setText(f"{t('dialog.error_title')}: {ex}")
         self._refresh_stepper()
 
     def _refresh_output_details(self):
         if not self.base_path or not self.outdir_path:
-            self.out_detail.setText("Selecciona base + carpeta salida para ver nombres esperados.")
-            self.out_indicator.setText("⚠")
+            self.out_detail.setText(t("detail.output_hint"))
+            self.out_indicator.setText("!")
             return
         out_file, log_file = build_output_paths(self.base_path, self.outdir_path)
-        self.out_detail.setText(f"Salida esperada: {os.path.basename(out_file)} | Log: {os.path.basename(log_file)}")
+        self.out_detail.setText(
+            t("detail.output_expected", outfile=os.path.basename(out_file), logfile=os.path.basename(log_file))
+        )
         writable = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
-        self.out_indicator.setText("✅" if writable else "⚠")
+        self.out_indicator.setText("OK" if writable else "!")
 
     def _refresh_guardrails(self):
         self._refresh_output_details()
@@ -484,10 +568,10 @@ class MainWindow(QMainWindow):
         rules_ok = self.rules_ok and os.path.isfile(self.rules_path) and not self.rules_has_validation_errors
         out_ok = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
         run_ok = self.last_result is not None and self.last_result.get("status") == "ok"
-        self.step_base.setText(f"1 Base {'✅' if base_ok else '⚠'}")
-        self.step_rules.setText(f"2 Reglas {'✅' if rules_ok else '⚠'}")
-        self.step_out.setText(f"3 Salida {'✅' if out_ok else '⚠'}")
-        self.step_run.setText(f"4 Validar/Procesar {'✅' if run_ok else '⏳'}")
+        self.step_base.setText(f"1 {t('header.step.base')} [{'OK' if base_ok else '!'}]")
+        self.step_rules.setText(f"2 {t('header.step.rules')} [{'OK' if rules_ok else '!'}]")
+        self.step_out.setText(f"3 {t('header.step.output')} [{'OK' if out_ok else '!'}]")
+        self.step_run.setText(f"4 {t('header.step.run')} [{'OK' if run_ok else t('step.pending')}]")
 
     def _can_validate(self):
         return os.path.isfile(self.base_path) and os.path.isfile(self.rules_path) and self.base_ok and self.rules_ok
@@ -509,39 +593,39 @@ class MainWindow(QMainWindow):
             return True
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Advertencias detectadas")
-        box.setText(f"Hay {warns} advertencias. Se recomienda corregir antes de cargar a SAP. ¿Deseas continuar?")
+        box.setWindowTitle(t("dialog.warns_title"))
+        box.setText(t("dialog.warns_text", warns=warns))
         box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Yes)
         box.setDefaultButton(QMessageBox.Cancel)
         cancel_btn = box.button(QMessageBox.Cancel)
         yes_btn = box.button(QMessageBox.Yes)
         if cancel_btn:
-            cancel_btn.setText("Cancelar")
+            cancel_btn.setText(t("dialog.cancel"))
         if yes_btn:
-            yes_btn.setText("Continuar")
+            yes_btn.setText(t("dialog.continue"))
         return box.exec() == QMessageBox.Yes
 
     def _start_job(self, preview):
         if self._thread is not None:
             return
         if preview and not self._can_validate():
-            QMessageBox.warning(self, "Validacion", "Selecciona base y reglas validas antes de validar.")
+            QMessageBox.warning(self, t("dialog.validation_title"), t("dialog.validation_pick"))
             return
         if not preview and (self.rules_has_validation_errors or self.last_result_has_validation_errors):
             QMessageBox.warning(
                 self,
-                "Procesar",
-                "No se puede procesar: RULES.csv tiene errores de validacion. Revisa la pestana Advertencias.",
+                t("dialog.process_title"),
+                t("dialog.process_rules_invalid"),
             )
             return
         if not preview and not self._can_process():
-            QMessageBox.warning(self, "Procesar", "Selecciona base, reglas y carpeta de salida escribible.")
+            QMessageBox.warning(self, t("dialog.process_title"), t("dialog.process_pick"))
             return
         if not preview and not self._confirm_warns_before_process():
             return
 
         self._running_preview = preview
-        self.status_label.setText("Iniciando...")
+        self.status_label.setText(t("status.starting"))
         self.progress.setValue(0)
         self.btn_cancel.setVisible(True)
         self.btn_cancel.setEnabled(True)
@@ -572,13 +656,15 @@ class MainWindow(QMainWindow):
             if button in (self.btn_cancel, self.btn_validate, self.btn_process, self.btn_open_outdir, self.btn_open_log):
                 continue
             button.setEnabled(enabled)
+        self.cmb_language.setEnabled(enabled)
+        self.chk_dark.setEnabled(enabled)
         self.btn_validate.setEnabled(enabled and self._can_validate())
         self.btn_process.setEnabled(enabled and self._can_process())
 
     def _cancel_job(self):
         if self._worker:
             self._worker.request_cancel()
-            self.status_label.setText("Cancelacion solicitada...")
+            self.status_label.setText(t("status.cancel_requested"))
             self.btn_cancel.setEnabled(False)
 
     def _on_worker_progress(self, current, total, message, percent):
@@ -586,7 +672,18 @@ class MainWindow(QMainWindow):
         self.status_label.setText(message)
 
     def _on_worker_failed(self, error, tb):
-        QMessageBox.critical(self, "Error", f"{error}\n\n{tb}")
+        QMessageBox.critical(self, t("dialog.error_title"), f"{error}\n\n{tb}")
+
+    def _translate_warns(self, warns_struct):
+        out = []
+        for item in warns_struct:
+            row = dict(item)
+            msg_id = row.get("msg_id", "")
+            params = row.get("msg_params", {}) or {}
+            if msg_id:
+                row["detail"] = t(msg_id, **params)
+            out.append(row)
+        return out
 
     def _on_worker_finished(self, result):
         self.last_result = result
@@ -599,20 +696,21 @@ class MainWindow(QMainWindow):
                 if item.get("severity") in ("SEV1", "SEV2"):
                     self.last_result_has_validation_errors = True
                     break
-        warns_struct = result.get("warns_struct", [])
+        warns_struct = self._translate_warns(result.get("warns_struct", []))
         errors_count = sum(1 for item in warns_struct if item.get("severity") in ("SEV1", "SEV2"))
         warnings_count = sum(1 for item in warns_struct if item.get("severity") == "SEV3")
-        self.lbl_adds.setText(f"Adds: {counters.get('adds', 0)}")
-        self.lbl_deletes.setText(f"Deletes: {counters.get('deletes', 0)}")
-        self.lbl_replaces.setText(f"Replaces: {counters.get('replaces', 0)}")
-        self.lbl_warns.setText(f"Warns: {warns}")
-        self.lbl_errors.setText(f"Errores (SEV1/SEV2): {errors_count}")
-        self.lbl_warnings.setText(f"Advertencias (SEV3): {warnings_count}")
+        self.lbl_adds.setText(t("summary.adds", n=counters.get("adds", 0)))
+        self.lbl_deletes.setText(t("summary.deletes", n=counters.get("deletes", 0)))
+        self.lbl_replaces.setText(t("summary.replaces", n=counters.get("replaces", 0)))
+        self.lbl_warns.setText(t("summary.warns", n=warns))
+        self.lbl_errors.setText(t("summary.errors", n=errors_count))
+        self.lbl_warnings.setText(t("summary.warnings", n=warnings_count))
 
         base_stats = result.get("base_stats", {})
         rules_stats = result.get("rules_stats", {})
         self.lbl_base_stats.setText(
-            "Base: encoding={enc}, lineas={lines}, roles={roles}, AGR_1251={c1}, AGR_1252={c2}".format(
+            t(
+                "summary.base",
                 enc=result.get("encoding_detected", ""),
                 lines=base_stats.get("total_lines", 0),
                 roles=base_stats.get("roles_unique", 0),
@@ -621,7 +719,8 @@ class MainWindow(QMainWindow):
             )
         )
         self.lbl_rules_stats.setText(
-            "Reglas: delimiter={delim}, reglas={rules}, roles={roles}, tablas={tables}".format(
+            t(
+                "summary.rules",
                 delim=result.get("delimiter_detected", ""),
                 rules=rules_stats.get("rules_loaded", 0),
                 roles=rules_stats.get("roles_unique", 0),
@@ -633,25 +732,26 @@ class MainWindow(QMainWindow):
         self.change_model.set_rows(self._build_change_rows(result.get("sample_rows", [])))
 
         if status == "cancelled":
-            self.lbl_summary_state.setText("⚠ Cancelado. No se escribieron archivos.")
-            self.status_label.setText("Cancelado por usuario.")
+            self.lbl_summary_state.setText(t("summary.state.cancelled"))
+            self.status_label.setText(t("status.cancelled"))
         elif status == "error":
             err = result.get("error")
             msg = f"{getattr(err, 'code', 'ERR')}: {getattr(err, 'message', str(err))}"
-            self.lbl_summary_state.setText(f"⚠ Error: {msg}")
-            self.status_label.setText("Error.")
-            QMessageBox.critical(self, "Error", msg)
+            self.lbl_summary_state.setText(t("summary.state.error", msg=msg))
+            self.status_label.setText(t("status.error"))
+            if not self._suppress_result_dialog:
+                QMessageBox.critical(self, t("dialog.error_title"), msg)
         else:
             if errors_count > 0:
-                self.lbl_summary_state.setText("❌ Reglas inválidas: corrige RULES.csv antes de procesar")
+                self.lbl_summary_state.setText(t("summary.state.invalid_rules"))
             elif warns > 0:
-                self.lbl_summary_state.setText("⚠ Revisar advertencias antes de cargar a SAP")
+                self.lbl_summary_state.setText(t("summary.state.with_warns"))
             else:
-                self.lbl_summary_state.setText("✅ Listo (sin advertencias)")
+                self.lbl_summary_state.setText(t("summary.state.ok"))
             if not self._running_preview:
                 self.current_outfile = result.get("outfile", "")
                 self.current_log_path = result.get("log_path", "")
-            self.status_label.setText("Finalizado.")
+            self.status_label.setText(t("status.finished"))
 
         self.btn_open_outdir.setEnabled(bool(self.current_outfile))
         self.btn_open_log.setEnabled(bool(self.current_log_path))
@@ -708,13 +808,12 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
 
-def launch_gui(version):
+def launch_gui(version, lang_code=None):
     app = QApplication.instance()
     owns_app = app is None
     if app is None:
         app = QApplication(sys.argv)
-    _apply_dark_theme(app)
-    win = MainWindow(version)
+    win = MainWindow(version, initial_language=lang_code)
     win.show()
     if owns_app:
         return app.exec()

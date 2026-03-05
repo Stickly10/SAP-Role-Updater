@@ -17,7 +17,7 @@ if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 ## 3) Build one-file executable (clean)
 
 ```bash
-pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" main.py
+pyinstaller --clean SAP-Role-Updater.spec
 ```
 
 ## 4) If Qt plugins are missing at runtime
@@ -30,5 +30,6 @@ pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" --collect-al
 
 - Ensure you are building with the same Python where `PySide6` is installed.
 - Delete previous `build/` and `dist/` outputs before rebuilding if artifacts look stale.
+- Building from `SAP-Role-Updater.spec` incluye archivos `locales/*.json` y `templates/RULES_template.csv` en el `.exe`.
 - If SmartScreen warns, verify hash and source before execution.
 - If GUI does not start but CLI works, rebuild with `--collect-all PySide6`.

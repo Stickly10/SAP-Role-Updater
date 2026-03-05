@@ -1,5 +1,11 @@
 __pycache__/
+**/__pycache__/
 *.pyc
 .DS_Store
+.ruff_cache/
 build/
 dist/
+*.tmp
+*_MOD
+*_MOD_LOG.csv
+*_MOD_LOG.tsv

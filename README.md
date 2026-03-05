@@ -1,69 +1,116 @@
-# SAP Role Updater
+# SAP Role Updater v1.3.9
 
-Actualiza exportes de roles SAP (AGR_1251 y AGR_1252) a partir de un archivo de reglas CSV/TSV.
+Herramienta de escritorio para preparar cambios masivos de roles SAP antes de cargarlos en PFCG.
 
-Preserva lineas no objetivo, reutiliza COUNTER libres y genera log tabulado.
+Toma un archivo base exportado desde Mass Download y un `RULES.csv`, valida reglas y genera:
 
-## Caracteristicas
+- Archivo modificado (`_MOD`)
+- Log tabulado (`_MOD_LOG.tsv`)
 
-- Soporta AGR_1251 y AGR_1252 en un solo run con un unico archivo de reglas.
-- Accion soportada: `replace_list` (borra coincidencias y recrea con LOW/HIGH).
-- Reutiliza COUNTER vacantes antes de incrementar.
-- Log TSV (`*_MOD_LOG.tsv`) y archivo modificado (`*_MOD`).
-- GUI en PySide6 o modo CLI.
-- Errores estructurados (JSON por stderr).
+No altera tablas no objetivo y mantiene la logica de reemplazo existente.
 
 ## Requisitos
 
-- Python 3.9+ (probado en 3.11).
-- PySide6 para GUI.
-- Windows para `.exe` (CLI funciona tambien en otros SO con Python).
+- Windows 10/11
+- Para usuario final: no requiere Python si usas `SAP Role Updater.exe` del release
+- Para desarrollo: Python 3.9+ y dependencias de `requirements.txt`
 
-## Estructura
+## Flujo Para Consultor SAP
 
-- `main.py`: entrypoint CLI/GUI.
-- `sap_role_updater_core.py`: logica core de parsing/procesamiento.
-- `gui_pyside6.py`: interfaz grafica con QThread, validacion y resultados.
-- `SAP-Role-Updater.py`: wrapper de compatibilidad.
-- `error_handler.py`: errores estructurados.
-- `BUILD.md`: instrucciones de compilacion con PyInstaller.
+1. Exporta roles desde PFCG (Mass Download).
+2. Guarda el archivo base (puede venir sin extension o como `.sap`).
+3. Prepara `RULES.csv` usando `templates/RULES_template.csv`.
+4. Abre `SAP Role Updater.exe`.
+5. Selecciona:
+   - Base
+   - Reglas
+   - Carpeta de salida
+6. Pulsa **Validar**:
+   - Errores (SEV1/SEV2): bloquean **Procesar**
+   - Advertencias (SEV3): permiten continuar, pero deben revisarse
+7. Pulsa **Procesar y generar _MOD**.
+8. Revisa:
+   - `<base>_MOD`
+   - `<base>_MOD_LOG.tsv`
+9. Carga el `_MOD` en PFCG y prueba primero en QA.
 
-## Reglas CSV
+## Estructura De RULES.csv
 
-Columnas (case-insensitive):
+Columnas obligatorias:
 
-`ACTION, TABLE, MANDT, AGR_NAME, OBJECT, AUTH, FIELD, LOW, HIGH`
+- `ACTION`
+- `TABLE`
+- `MANDT`
+- `AGR_NAME`
+- `OBJECT`
+- `AUTH`
+- `FIELD`
+- `LOW`
+- `HIGH`
 
-- AGR_1251: OBJECT/AUTH requeridos; FIELD = campo auth; LOW/HIGH (40).
-- AGR_1252: OBJECT/AUTH vacios; FIELD = org field (ej. `$WERKS`); LOW/HIGH (40).
-- Separador autodetectado (`;`, `,` o tab); lineas vacias se omiten.
-- `replace_list` elimina coincidencias y crea una linea por par LOW/HIGH.
+Reglas clave:
 
-## Uso GUI
+- `ACTION`: solo `replace_list`
+- `TABLE`: solo `AGR_1251` o `AGR_1252`
+- `MANDT`: 3 digitos (ej. `100`)
+- `AGR_NAME`: sin espacios, max 30
+- `LOW/HIGH`: opcionales, max 40 por valor
+- Listas: usar `|` o `,` (`0*|A*`, `9*|Z*`)
 
-```bash
-python main.py --gui
+Dependiendo de `TABLE`:
+
+- `AGR_1251`: `OBJECT` y `AUTH` obligatorios
+- `AGR_1252`: `FIELD` tipo VARBL (ej. `$WERKS`), `OBJECT/AUTH` se ignoran
+
+## Ejemplos Reales
+
+Ejemplo AGR_1251:
+
+```csv
+replace_list,AGR_1251,100,Z:FSBP_CRM_ZSALSPRO_EXT_1004,S_RFC,T-BD08132800,RFC_NAME,0*|A*,9*|Z*
 ```
 
-Tambien abre GUI automaticamente si ejecutas sin argumentos:
+Ejemplo AGR_1252:
 
-```bash
-python main.py
+```csv
+replace_list,AGR_1252,100,Z:FSBP_CRM_ZSALSPRO_EXT_1004,,,$WERKS,0*|A*,9*|Z*
 ```
 
-## Uso CLI
+## Errores Comunes
+
+- Faltan columnas en header: revisa encabezados obligatorios.
+- `MANDT` invalido: debe ser exactamente 3 digitos.
+- VARBL sin `$` en `AGR_1252`: ejemplo correcto `$WERKS`.
+- Valores `LOW/HIGH` mayores a 40 caracteres.
+- Rol/campo no existe en base: aparece advertencia de no coincidencia.
+
+## Interfaz
+
+- **Idioma**: selector en el header (`Español` / `English`), cambio en caliente.
+- **Tema**: toggle **Modo oscuro** en header, cambio en caliente y persistente.
+- **Tabs de resultado**:
+  - Resumen
+  - Advertencias (con filtro)
+  - Cambios (muestra de cambios)
+
+## Compatibilidad CLI
+
+La CLI se mantiene:
 
 ```bash
-python main.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
+python main.py --in <base> --rules <rules> --outdir <outdir> --lang es
 ```
 
-## Notas tecnicas
+Modo preview:
 
-- Log delimitado por `\t` para evitar conflictos con comas.
-- COUNTER se libera al borrar y se asigna el menor disponible.
-- Tablas no objetivo se preservan 1:1.
-- Errores tipicos: `SYS-500`, `VAL-*` en JSON por stderr.
+```bash
+python main.py --in <base> --rules <rules> --preview --lang en
+```
 
-## Licencia
+## Notas De Log
 
-Pending (define tu licencia preferida, ej. MIT).
+El archivo log se mantiene en formato tabulado estable (`.tsv`) para compatibilidad:
+
+- Header: `action`, `before`, `after`
+- Delimitador: tab (`\t`)
+

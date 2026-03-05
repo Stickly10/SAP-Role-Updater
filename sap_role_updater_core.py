@@ -10,14 +10,16 @@
 # Usage example:
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
 
-__version__ = "1.3.8"
-
 import csv
 import os
 import re
 from collections import defaultdict
 from typing import Callable
 from error_handler import CodedError, raise_error
+from i18n import t
+from version import APP_VERSION
+
+__version__ = APP_VERSION
 
 # ---------------- widths and regex ----------------
 
@@ -145,7 +147,7 @@ def split_pairs(raw_low: str, raw_high: str, rule_ctx: dict = None):
         raise_error(
             "VAL-002",
             "SEV2",
-            "HIGH provided but LOW is empty",
+            t("val.high_without_low"),
             err_type="Validation",
             origin="split_pairs",
             details=f"row={ctx.get('row','?')}, table={ctx.get('table','?')}, role={ctx.get('role','?')}, field={ctx.get('field','?')}",
@@ -264,7 +266,9 @@ def run_job_ex(
         if log_writer:
             log_writer.writerow(row)
 
-    def warn_emit(code, detail, severity="SEV3", rule=None, legacy=False):
+    def warn_emit(code, detail, severity="SEV3", rule=None, legacy=False, msg_id=None, msg_params=None):
+        payload_params = msg_params or {}
+        final_detail = detail or (t(msg_id, **payload_params) if msg_id else "")
         info = {
             "code": code,
             "severity": severity,
@@ -272,23 +276,25 @@ def run_job_ex(
             "table": (rule or {}).get("table", ""),
             "role": (rule or {}).get("role", ""),
             "field": (rule or {}).get("field", ""),
-            "detail": detail,
+            "detail": final_detail,
+            "msg_id": msg_id or "",
+            "msg_params": payload_params,
         }
         res["warns_struct"].append(info)
         if legacy:
-            res["warns_details"].append(detail)
+            res["warns_details"].append(final_detail)
 
     try:
         if not preview and not outdir:
-            raise_error("VAL-004", "SEV2", "Output directory is required unless preview", origin="run_job_ex", err_type="Validation")
+            raise_error("VAL-004", "SEV2", t("val.outdir_required"), origin="run_job_ex", err_type="Validation")
 
-        progress(0, 5, "Leyendo archivo base...")
+        progress(0, 5, t("progress.read_base"))
         lines, enc = read_text(infile)
         res["encoding_detected"] = enc
         entries = build_entries(lines)
         res["base_stats"] = _build_base_stats(lines, entries)
 
-        progress(1, 5, "Parseando reglas...")
+        progress(1, 5, t("progress.parse_rules"))
         rules, rules_meta = parse_rules(rules_path, return_meta=True)
         res["delimiter_detected"] = rules_meta["delimiter_detected"]
         res["rules_stats"] = rules_meta["rules_stats"]
@@ -303,6 +309,8 @@ def run_job_ex(
                 severity=issue.get("severity", "SEV2"),
                 rule=issue,
                 legacy=True,
+                msg_id=issue.get("msg_id", ""),
+                msg_params=issue.get("msg_params", {}),
             )
             log_emit(issue.get("code", "VAL-INVALID-TABLE"), issue.get("detail", ""), "")
 
@@ -311,8 +319,8 @@ def run_job_ex(
             res["error"] = CodedError(
                 "VAL-RULES-INVALID",
                 "SEV2",
-                "Rules file has validation errors",
-                details="Run preview/validation and fix RULES.csv before processing.",
+                t("val.rules_invalid_process"),
+                details=t("val.rules_invalid_process_details"),
                 err_type="Validation",
                 origin="run_job_ex",
             )
@@ -324,38 +332,50 @@ def run_job_ex(
             temp_log_path = final_log_path + ".tmp"
             log_fh = open(temp_log_path, "w", encoding="utf-8", newline="")
             log_writer = csv.writer(log_fh, delimiter="\t")
-            log_writer.writerow(["action", "before", "after"])
+            log_writer.writerow([t("log.header.action"), t("log.header.before"), t("log.header.after")])
 
         total_rules = max(len(rules), 1)
         for idx, r in enumerate(rules, start=1):
             if is_cancelled and is_cancelled():
                 res["status"] = "cancelled"
                 return res
-            progress(idx, total_rules, f"Procesando regla {idx}/{total_rules} ...")
+            progress(idx, total_rules, t("progress.process_rule", current=idx, total=total_rules))
 
             rule_log_rows = []
             if r["action"] != "replace_list":
                 res["counters"]["warns"] += 1
-                warn_emit("WARN-ACTION", f"Unsupported action: {r['action']} (row={r['row']})", severity="SEV3", rule=r, legacy=True)
-                rule_log_rows.append(["WARN-ACTION", f"Unsupported action: {r['action']}", ""])
+                detail = t("warn.unsupported_action", action=r["action"], row=r["row"])
+                warn_emit(
+                    "WARN-ACTION",
+                    detail,
+                    severity="SEV3",
+                    rule=r,
+                    legacy=True,
+                    msg_id="warn.unsupported_action",
+                    msg_params={"action": r["action"], "row": r["row"]},
+                )
+                rule_log_rows.append(["WARN-ACTION", detail, ""])
             elif r["table"] == "AGR_1251":
-                handle_rule_1251(r, entries, counters_used, rule_log_rows, res["counters"])
+                handle_rule_1251(r, entries, counters_used, rule_log_rows, res["counters"], warn_emit)
             elif r["table"] == "AGR_1252":
-                handle_rule_1252(r, entries, counters_used, rule_log_rows, res["counters"])
+                handle_rule_1252(r, entries, counters_used, rule_log_rows, res["counters"], warn_emit)
             else:
                 res["counters"]["warns"] += 1
                 res["has_validation_errors"] = True
-                detail = (
-                    "Columna TABLE invalida o vacia. Esperado: AGR_1251 o AGR_1252. "
-                    f"Encontrado: '{r.get('table', '')}'. Corrige RULES.csv."
+                detail = t("val.row_invalid_table", row=r.get("row", ""), value=r.get("table", ""))
+                warn_emit(
+                    "VAL-INVALID-TABLE",
+                    detail,
+                    severity="SEV2",
+                    rule=r,
+                    legacy=True,
+                    msg_id="val.row_invalid_table",
+                    msg_params={"row": r.get("row", ""), "value": r.get("table", "")},
                 )
-                warn_emit("VAL-INVALID-TABLE", detail, severity="SEV2", rule=r, legacy=True)
                 rule_log_rows.append(["VAL-INVALID-TABLE", detail, ""])
 
             for action, before, after in rule_log_rows:
                 log_emit(action, before, after)
-                if action in ("WARN-RULE", "WARN-NOBASE"):
-                    warn_emit(action, before, severity="SEV3", rule=r)
 
         if is_cancelled and is_cancelled():
             res["status"] = "cancelled"
@@ -369,7 +389,7 @@ def run_job_ex(
                 out_lines.append(e["raw"])
 
         if not preview:
-            progress(total_rules, total_rules, "Escribiendo archivo MOD...")
+            progress(total_rules, total_rules, t("progress.write_mod"))
             with open(temp_out_path, "w", encoding=enc, newline="\n") as f:
                 for ln in out_lines:
                     f.write(ln + "\n")
@@ -383,7 +403,7 @@ def run_job_ex(
             res["outfile"] = final_out_path
             res["log_path"] = final_log_path
 
-        progress(total_rules, total_rules, "Finalizado.")
+        progress(total_rules, total_rules, t("progress.done"))
         return res
     except CodedError as ce:
         res["status"] = "error"
@@ -393,7 +413,7 @@ def run_job_ex(
         wrapped = CodedError(
             "SYS-500",
             "SEV1",
-            "Unhandled exception",
+            t("sys.unhandled"),
             details=str(ex),
             err_type="System",
             origin="run_job_ex",
@@ -422,12 +442,12 @@ def run_job(infile, rules_path, outdir=None, verbose=False, preview=False):
         verbose=verbose,
     )
     if res["status"] == "cancelled":
-        raise_error("USR-001", "SEV3", "Operation cancelled by user", origin="run_job", err_type="User")
+        raise_error("USR-001", "SEV3", t("user.cancelled"), origin="run_job", err_type="User")
     if res["status"] == "error":
         err = res.get("error")
         if isinstance(err, CodedError):
             raise err
-        raise_error("SYS-500", "SEV1", "Unhandled exception", details=str(err), origin="run_job", err_type="System")
+        raise_error("SYS-500", "SEV1", t("sys.unhandled"), details=str(err), origin="run_job", err_type="System")
     return res["counters"], res["outfile"], res["log_path"], res["warns_details"]
 
 
@@ -551,7 +571,9 @@ def parse_rules(path, return_meta=False):
     rx_mandt = re.compile(r"^\d{3}$")
     rx_varbl = re.compile(r"^\$[A-Z0-9_]{1,9}$")
 
-    def issue(code, severity, row, table, role, field, detail):
+    def issue(code, severity, row, table, role, field, *, msg_id="", msg_params=None, detail=None):
+        params = msg_params or {}
+        rendered = detail if detail is not None else (t(msg_id, **params) if msg_id else "")
         return {
             "code": code,
             "severity": severity,
@@ -559,7 +581,9 @@ def parse_rules(path, return_meta=False):
             "table": table,
             "role": role,
             "field": field,
-            "detail": detail,
+            "detail": rendered,
+            "msg_id": msg_id,
+            "msg_params": params,
         }
 
     def split_tokens(raw):
@@ -581,7 +605,7 @@ def parse_rules(path, return_meta=False):
                 "",
                 "",
                 "",
-                "Archivo de reglas vacio. RULES.csv debe incluir encabezados y filas de datos.",
+                msg_id="val.file_empty",
             )
         )
 
@@ -594,11 +618,8 @@ def parse_rules(path, return_meta=False):
                 "",
                 "",
                 "",
-                (
-                    "Encabezados faltantes: "
-                    + ", ".join(missing_headers)
-                    + ". Esperado: ACTION, TABLE, MANDT, AGR_NAME, OBJECT, AUTH, FIELD, LOW, HIGH."
-                ),
+                msg_id="val.missing_headers",
+                msg_params={"missing": ", ".join(missing_headers)},
             )
         )
 
@@ -629,86 +650,67 @@ def parse_rules(path, return_meta=False):
             row_errors = []
             row_warnings = []
 
-            def add_err(code, detail):
-                row_errors.append(issue(code, "SEV2", i, raw_table, raw_role, raw_field, detail))
+            def add_err(code, msg_id, **params):
+                row_errors.append(
+                    issue(
+                        code,
+                        "SEV2",
+                        i,
+                        raw_table,
+                        raw_role,
+                        raw_field,
+                        msg_id=msg_id,
+                        msg_params={"row": i, **params},
+                    )
+                )
 
             if raw_action == "":
-                add_err("VAL-MISSING-ACTION", f"Fila {i}: ACTION vacio. Esperado: replace_list. Corrige RULES.csv.")
+                add_err("VAL-MISSING-ACTION", "val.row_missing_action")
             elif action != "replace_list":
-                add_err(
-                    "VAL-INVALID-ACTION",
-                    f"Fila {i}: ACTION invalido. Esperado: replace_list. Encontrado: '{raw_action}'. Corrige RULES.csv.",
-                )
+                add_err("VAL-INVALID-ACTION", "val.row_invalid_action", value=raw_action)
 
             if raw_table == "":
-                add_err("VAL-MISSING-TABLE", f"Fila {i}: TABLE vacio. Esperado: AGR_1251 o AGR_1252. Corrige RULES.csv.")
+                add_err("VAL-MISSING-TABLE", "val.row_missing_table")
             elif table not in valid_tables:
-                add_err(
-                    "VAL-INVALID-TABLE",
-                    f"Fila {i}: TABLE invalido. Esperado: AGR_1251 o AGR_1252. Encontrado: '{raw_table}'. Corrige RULES.csv.",
-                )
+                add_err("VAL-INVALID-TABLE", "val.row_invalid_table", value=raw_table)
 
             if raw_mandt == "":
-                add_err("VAL-MISSING-MANDT", f"Fila {i}: MANDT vacio. Corrige RULES.csv.")
+                add_err("VAL-MISSING-MANDT", "val.row_missing_mandt")
             elif not rx_mandt.fullmatch(raw_mandt):
-                add_err(
-                    "VAL-MANDT-FORMAT",
-                    f"Fila {i}: MANDT invalido. Esperado 3 digitos (000-999). Encontrado: '{raw_mandt}'.",
-                )
+                add_err("VAL-MANDT-FORMAT", "val.row_mandt_format", value=raw_mandt)
 
             if raw_role == "":
-                add_err("VAL-MISSING-AGR_NAME", f"Fila {i}: AGR_NAME vacio. Corrige RULES.csv.")
+                add_err("VAL-MISSING-AGR_NAME", "val.row_missing_agr_name")
             else:
                 if len(raw_role) > 30:
-                    add_err(
-                        "VAL-AGRNAME-LEN",
-                        f"Fila {i}: AGR_NAME excede 30 caracteres. Longitud={len(raw_role)}. Valor: '{raw_role}'.",
-                    )
+                    add_err("VAL-AGRNAME-LEN", "val.row_agrname_len", length=len(raw_role), value=raw_role)
                 if any(ch.isspace() for ch in raw_role):
-                    add_err(
-                        "VAL-AGRNAME-FORMAT",
-                        f"Fila {i}: AGR_NAME invalido. No se permiten espacios. Encontrado: '{raw_role}'.",
-                    )
+                    add_err("VAL-AGRNAME-FORMAT", "val.row_agrname_format", value=raw_role)
 
             if raw_field == "":
-                add_err("VAL-MISSING-FIELD", f"Fila {i}: FIELD vacio. Corrige RULES.csv.")
+                add_err("VAL-MISSING-FIELD", "val.row_missing_field")
 
             for col_name, raw_val in (("LOW", raw_low), ("HIGH", raw_high)):
                 for token in split_tokens(raw_val):
                     if token and len(token) > 40:
-                        add_err(
-                            "VAL-LOWHIGH-LEN",
-                            f"Fila {i}: {col_name} contiene token >40 chars. Token='{token}' (len={len(token)}).",
-                        )
+                        add_err("VAL-LOWHIGH-LEN", "val.row_lowhigh_len", column=col_name, token=token, length=len(token))
 
             if table == "AGR_1251":
                 if raw_object == "":
-                    add_err("VAL-MISSING-OBJECT", f"Fila {i}: OBJECT vacio para AGR_1251. Corrige RULES.csv.")
+                    add_err("VAL-MISSING-OBJECT", "val.row_missing_object")
                 if raw_auth == "":
-                    add_err("VAL-MISSING-AUTH", f"Fila {i}: AUTH vacio para AGR_1251. Corrige RULES.csv.")
+                    add_err("VAL-MISSING-AUTH", "val.row_missing_auth")
 
                 for col_name, raw_val in (("OBJECT", raw_object), ("AUTH", raw_auth), ("FIELD", raw_field)):
                     if raw_val and any(ch.isspace() for ch in raw_val):
-                        add_err(
-                            "VAL-1251-KEY-FORMAT",
-                            f"Fila {i}: {col_name} invalido para AGR_1251. No se permiten espacios. Encontrado: '{raw_val}'.",
-                        )
+                        add_err("VAL-1251-KEY-FORMAT", "val.row_1251_key_format", column=col_name, value=raw_val)
 
                 if raw_object and len(raw_object) > 10:
-                    add_err(
-                        "VAL-OBJECT-LEN",
-                        f"Fila {i}: OBJECT excede 10 caracteres. Longitud={len(raw_object)}. Valor: '{raw_object}'.",
-                    )
+                    add_err("VAL-OBJECT-LEN", "val.row_object_len", length=len(raw_object), value=raw_object)
                 if raw_auth and len(raw_auth) > 12:
-                    add_err(
-                        "VAL-AUTH-LEN",
-                        f"Fila {i}: AUTH excede 12 caracteres. Longitud={len(raw_auth)}. Valor: '{raw_auth}'.",
-                    )
+                    add_err("VAL-AUTH-LEN", "val.row_auth_len", length=len(raw_auth), value=raw_auth)
                 if raw_field and len(raw_field) > 10:
-                    add_err(
-                        "VAL-FIELD-LEN",
-                        f"Fila {i}: FIELD excede 10 caracteres. Longitud={len(raw_field)}. Valor: '{raw_field}'.",
-                    )
+                    add_err("VAL-FIELD-LEN", "val.row_field_len", length=len(raw_field), value=raw_field)
             elif table == "AGR_1252":
                 if raw_object or raw_auth:
                     row_warnings.append(
@@ -719,24 +721,16 @@ def parse_rules(path, return_meta=False):
                             raw_table,
                             raw_role,
                             raw_field,
-                            f"Fila {i}: OBJECT/AUTH seran ignorados para AGR_1252.",
+                            msg_id="warn.row_ignored_object_auth",
+                            msg_params={"row": i},
                         )
                     )
 
                 if raw_field:
                     if len(raw_field) > 10:
-                        add_err(
-                            "VAL-VARBL-LEN",
-                            f"Fila {i}: FIELD(VARBL) excede 10 caracteres. Longitud={len(raw_field)}. Valor: '{raw_field}'.",
-                        )
+                        add_err("VAL-VARBL-LEN", "val.row_varbl_len", length=len(raw_field), value=raw_field)
                     if not rx_varbl.fullmatch(raw_field):
-                        add_err(
-                            "VAL-1252-VARBL-FORMAT",
-                            (
-                                f"Fila {i}: FIELD(VARBL) invalido para AGR_1252. Debe iniciar con '$' y max 10 chars. "
-                                f"Encontrado: '{raw_field}'."
-                            ),
-                        )
+                        add_err("VAL-1252-VARBL-FORMAT", "val.row_varbl_format", value=raw_field)
 
             try:
                 pairs = split_pairs(
@@ -753,7 +747,8 @@ def parse_rules(path, return_meta=False):
                         raw_table,
                         raw_role,
                         raw_field,
-                        f"Fila {i}: {ce.message}. {ce.details or ''}".strip(),
+                        msg_id="val.row_split_pairs",
+                        msg_params={"row": i, "message": ce.message, "details": ce.details or ""},
                     )
                 )
                 pairs = []
@@ -837,17 +832,28 @@ def next_counter(key, used):
     return n
 
 
-def handle_rule_1251(r, entries, counters_used, log_rows, counters):
+def handle_rule_1251(r, entries, counters_used, log_rows, counters, warn_emit=None):
     required = ["mandt", "role", "object", "auth", "field"]
     if not all(r.get(k) for k in required):
         counters["warns"] += 1
+        detail = t("warn.rule_missing_1251", row=r["row"])
         log_rows.append(
             [
                 "WARN-RULE",
-                f"Missing mandt/role/object/auth/field at row {r['row']}",
+                detail,
                 "",
             ]
         )
+        if warn_emit:
+            warn_emit(
+                "WARN-RULE",
+                detail,
+                severity="SEV3",
+                rule=r,
+                msg_id="warn.rule_missing_1251",
+                msg_params={"row": r["row"]},
+                legacy=True,
+            )
         return
 
     key = (
@@ -867,7 +873,18 @@ def handle_rule_1251(r, entries, counters_used, log_rows, counters):
 
     if not hits:
         counters["warns"] += 1
-        log_rows.append(["WARN-NOBASE", f"No base lines for AGR_1251 key={key} field={field}", ""])
+        detail = t("warn.nobase_1251", key=key, field=field)
+        log_rows.append(["WARN-NOBASE", detail, ""])
+        if warn_emit:
+            warn_emit(
+                "WARN-NOBASE",
+                detail,
+                severity="SEV3",
+                rule=r,
+                msg_id="warn.nobase_1251",
+                msg_params={"key": key, "field": field},
+                legacy=True,
+            )
         return
 
     base = hits[0]
@@ -897,11 +914,22 @@ def handle_rule_1251(r, entries, counters_used, log_rows, counters):
     append_replace_logs(befores, afters, log_rows)
 
 
-def handle_rule_1252(r, entries, counters_used, log_rows, counters):
+def handle_rule_1252(r, entries, counters_used, log_rows, counters, warn_emit=None):
     required = ["mandt", "role", "field"]
     if not all(r.get(k) for k in required):
         counters["warns"] += 1
-        log_rows.append(["WARN-RULE", f"Missing mandt/role/field at row {r['row']}", ""])
+        detail = t("warn.rule_missing_1252", row=r["row"])
+        log_rows.append(["WARN-RULE", detail, ""])
+        if warn_emit:
+            warn_emit(
+                "WARN-RULE",
+                detail,
+                severity="SEV3",
+                rule=r,
+                msg_id="warn.rule_missing_1252",
+                msg_params={"row": r["row"]},
+                legacy=True,
+            )
         return
 
     mandt_clean = r["mandt"].strip()
@@ -928,7 +956,18 @@ def handle_rule_1252(r, entries, counters_used, log_rows, counters):
 
     if not hits:
         counters["warns"] += 1
-        log_rows.append(["WARN-NOBASE", f"No base lines for AGR_1252 key={key}", ""])
+        detail = t("warn.nobase_1252", key=key)
+        log_rows.append(["WARN-NOBASE", detail, ""])
+        if warn_emit:
+            warn_emit(
+                "WARN-NOBASE",
+                detail,
+                severity="SEV3",
+                rule=r,
+                msg_id="warn.nobase_1252",
+                msg_params={"key": key},
+                legacy=True,
+            )
         return
 
     base = hits[0]
