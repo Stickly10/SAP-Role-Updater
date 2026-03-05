@@ -5,6 +5,7 @@
 - Keep `ruff`, `pytest`, and `i18n_audit.py` green
 - Build `SAP Role Updater.exe` from the current tagged source
 - Keep consultant docs, security docs, and release notes synchronized with the shipped version
+- Keep semantic versioning (`major.minor.patch`) explicit and consistent across release artifacts
 - Preserve compatibility of CLI, GUI, and final MOD output
 
 ## P1 - Next Engineering Iteration

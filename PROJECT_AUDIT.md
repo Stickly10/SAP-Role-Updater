@@ -95,6 +95,7 @@ Evidence:
 - ✅ GitHub Actions workflow added
 - ✅ `requirements-dev.txt` added
 - ✅ Build and checks scripts added
+- ✅ Semantic versioning helper added for `major.minor.patch`
 - ✅ Release commands documented
 - ❌ Containerization does not apply to this Windows desktop EXE workflow
 
@@ -104,6 +105,7 @@ Evidence:
 - [requirements-dev.txt](requirements-dev.txt)
 - [scripts/build.ps1](scripts/build.ps1)
 - [scripts/run_checks.ps1](scripts/run_checks.ps1)
+- [scripts/bump_version.py](scripts/bump_version.py)
 - [RELEASE_COMMANDS.txt](RELEASE_COMMANDS.txt)
 
 ## 7. UX / Accesibilidad / i18n

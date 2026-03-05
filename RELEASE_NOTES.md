@@ -1,32 +1,18 @@
-# SAP Role Updater v1.3.11
+# SAP Role Updater v1.3.12
 
 ## Release Summary
 
-This release focuses on release-readiness, engineering quality, and maintainability without changing the functional role-update algorithm.
+This release fixes the release asset naming workflow and formalizes semantic versioning without changing the functional role-update algorithm.
 
 ## Added
 
-- `src/sap_role_updater/` package structure
-- `pytest` suite and safe fixtures
-- CI workflow for lint, tests, i18n audit, and Windows build
-- Accessibility improvements in the PySide6 GUI
-- Documentation pack:
-  - `ARCHITECTURE.md`
-  - `HELP.md`
-  - `PRIVACY.md`
-  - `USAGE.md`
-  - `PROJECT_AUDIT.md`
-  - `ROADMAP.md`
-  - `DEFINITION_OF_DONE.md`
-  - `QA_CHECKLIST.md`
-- Release helper scripts and commands
+- Semantic version parser and bump helpers in `src/sap_role_updater/version.py`
+- `scripts/bump_version.py` for `major`, `minor`, `patch`, and `set x.y.z`
 
 ## Improved
 
-- Central settings and resource path handling
-- Cleaner package boundaries: core, gui, utils
-- Reproducible build and dev workflow documentation
-- Security checklist aligned with the actual offline threat model
+- Release commands now upload the executable with explicit display label `SAP Role Updater.exe`
+- Versioning workflow now follows documented semantic versioning instead of ad-hoc patch bumps
 
 ## Compatibility Notes
 

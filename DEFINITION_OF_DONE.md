@@ -37,7 +37,8 @@ Any future change is done only when all items below are satisfied.
 
 ## Release
 
-- Version bumped once in the single source of truth
+- Version bumped through semantic versioning (`major.minor.patch`)
+- Use `python scripts\bump_version.py major|minor|patch` instead of manual edits
 - `CHANGELOG.md`, `RELEASE_NOTES.md`, and `RELEASE_COMMANDS.txt` updated
 - EXE builds successfully
 - Commit, push, tag, and release completed or commands documented

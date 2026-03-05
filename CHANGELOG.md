@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.12] - 2026-03-05
+
+### Added
+
+- Semantic version helper in `src/sap_role_updater/version.py`
+- `scripts/bump_version.py` to manage `major`, `minor`, `patch`, or explicit `set x.y.z`
+
+### Changed
+
+- Release commands now upload the EXE with explicit display label `SAP Role Updater.exe`
+- Release workflow now documents semantic versioning instead of manual patch-only bumps
+
+### Unchanged By Design
+
+- Core replacement algorithm
+- Final MOD file format
+- Standard log output format (`_MOD_LOG.txt`, tab-delimited)
+
 ## [1.3.11] - 2026-03-05
 
 ### Added

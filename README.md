@@ -1,4 +1,4 @@
-# SAP Role Updater v1.3.11
+# SAP Role Updater v1.3.12
 
 Herramienta de escritorio para preparar cambios masivos de roles SAP antes de cargarlos en PFCG.
 
@@ -20,6 +20,22 @@ No cambia la logica funcional del algoritmo de reemplazo ni el formato final del
 - Windows 10/11
 - Para uso funcional: no necesitas Python si usas `SAP Role Updater.exe`
 - Para desarrollo: Python 3.11 y dependencias de `requirements.txt`
+
+## Versionado
+
+El proyecto usa versionado semantico `MAJOR.MINOR.PATCH`.
+
+- `MAJOR`: cambios incompatibles o ruptura de flujo aprobado
+- `MINOR`: funcionalidades nuevas compatibles
+- `PATCH`: correcciones, hardening, docs, QA o mejoras sin romper compatibilidad
+
+Para futuros releases no se debe editar la version “a mano” en varios archivos. Usa:
+
+```powershell
+python scripts\bump_version.py patch
+python scripts\bump_version.py minor
+python scripts\bump_version.py major
+```
 
 ## Paso A Paso Para Consultor SAP
 
