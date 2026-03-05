@@ -3,10 +3,11 @@
 
 import argparse
 import sys
+import traceback
 
-from error_handler import CodedError, emit_error
+from error_handler import CodedError
 from i18n import detect_system_language, load_locales, set_language, t
-from sap_role_updater_core import run_job
+from sap_role_updater_core import build_meta_path, run_job
 from version import APP_VERSION
 
 
@@ -34,6 +35,9 @@ def main():
     ap.add_argument("--gui", dest="gui", action="store_true", help=t("cli.arg_gui"))
     ap.add_argument("--preview", dest="preview", action="store_true", help=t("cli.arg_preview"))
     ap.add_argument("--lang", dest="lang", default=default_lang, choices=["es", "en"], help=t("cli.arg_lang"))
+    ap.add_argument("--redact-log", dest="redact_log", action="store_true", help=t("cli.arg_redact_log"))
+    ap.add_argument("--write-meta", dest="write_meta", action="store_true", help=t("cli.arg_write_meta"))
+    ap.add_argument("--debug", dest="debug", action="store_true", help=t("cli.arg_debug"))
     args = ap.parse_args()
     set_language(args.lang)
 
@@ -58,6 +62,8 @@ def main():
             outdir=args.outdir,
             preview=args.preview,
             verbose=args.verbose,
+            redact_log=args.redact_log,
+            write_meta=args.write_meta,
         )
         if args.verbose:
             print(t("cli.rules_processed"))
@@ -66,6 +72,8 @@ def main():
         else:
             print(t("cli.end_written", outdir=args.outdir))
             print(t("cli.log", log=log_path))
+            if args.write_meta:
+                print(t("cli.meta", meta=build_meta_path(args.infile, args.outdir)))
         print(
             t(
                 "cli.summary",
@@ -78,18 +86,14 @@ def main():
         if warns:
             print(t("cli.warns", warns=" | ".join(warns)))
     except CodedError as ce:
-        emit_error(ce)
+        print(t("cli.error", code=ce.code, message=ce.message), file=sys.stderr)
+        if args.debug and ce.details:
+            print(t("cli.details", details=ce.details), file=sys.stderr)
         sys.exit(1)
-    except Exception as ex:  # noqa: BLE001
-        wrapped = CodedError(
-            "SYS-500",
-            "SEV1",
-            t("sys.unhandled"),
-            details=str(ex),
-            err_type="System",
-            origin="main",
-        )
-        emit_error(wrapped)
+    except Exception:  # noqa: BLE001
+        print(t("cli.error", code="SYS-500", message=t("sys.unhandled")), file=sys.stderr)
+        if args.debug:
+            traceback.print_exc()
         sys.exit(1)
 
 

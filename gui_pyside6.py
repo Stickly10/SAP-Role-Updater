@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sys
 import traceback
+from pathlib import Path
 
 from PySide6.QtCore import (
     QAbstractTableModel,
@@ -26,6 +27,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QDesktopServices, QPainter
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -47,6 +49,7 @@ from PySide6.QtWidgets import (
 
 from error_handler import CodedError
 from i18n import detect_system_language, load_locales, set_language, t
+from security_utils import DEFAULT_LIMITS, is_unc_path, resolve_output_dir, resolve_regular_file
 from sap_role_updater_core import build_entries, build_output_paths, parse_entry_1251, parse_entry_1252, parse_rules, read_text, run_job_ex
 from theme import ThemeManager
 
@@ -111,13 +114,15 @@ class JobWorker(QObject):
     finished = Signal(dict)
     failed = Signal(str, str)
 
-    def __init__(self, infile, rules_path, outdir, preview, ui_sample_limit=300):
+    def __init__(self, infile, rules_path, outdir, preview, ui_sample_limit=300, redact_log=False, write_meta=False):
         super().__init__()
         self.infile = infile
         self.rules_path = rules_path
         self.outdir = outdir
         self.preview = preview
         self.ui_sample_limit = ui_sample_limit
+        self.redact_log = redact_log
+        self.write_meta = write_meta
         self._cancel_requested = False
 
     def request_cancel(self):
@@ -138,6 +143,8 @@ class JobWorker(QObject):
                 ui_sample_limit=self.ui_sample_limit,
                 progress_cb=on_progress,
                 is_cancelled=lambda: self._cancel_requested,
+                redact_log=self.redact_log,
+                write_meta=self.write_meta,
             )
             self.finished.emit(result)
         except Exception as ex:  # noqa: BLE001
@@ -206,6 +213,7 @@ class MainWindow(QMainWindow):
         self.outdir_path = ""
         self.current_outfile = ""
         self.current_log_path = ""
+        self.current_meta_path = ""
         self.last_result = None
         self._thread = None
         self._worker = None
@@ -301,6 +309,12 @@ class MainWindow(QMainWindow):
         self.btn_cancel.setObjectName("cancelButton")
         self.btn_cancel.clicked.connect(self._cancel_job)
         self.btn_cancel.setVisible(False)
+        self.chk_redact_log = QCheckBox()
+        self.chk_redact_log.setChecked(self.settings.value("redact_log", False, type=bool))
+        self.chk_redact_log.toggled.connect(lambda val: self.settings.setValue("redact_log", bool(val)))
+        self.chk_write_meta = QCheckBox()
+        self.chk_write_meta.setChecked(self.settings.value("write_meta", False, type=bool))
+        self.chk_write_meta.toggled.connect(lambda val: self.settings.setValue("write_meta", bool(val)))
         self.progress = QProgressBar()
         self.progress.setMinimum(0)
         self.progress.setMaximum(100)
@@ -310,6 +324,8 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.btn_validate)
         actions.addWidget(self.btn_process)
         actions.addWidget(self.btn_cancel)
+        actions.addWidget(self.chk_redact_log)
+        actions.addWidget(self.chk_write_meta)
         actions.addWidget(self.progress, 1)
         actions.addWidget(self.status_label, 2)
         layout.addLayout(actions)
@@ -377,10 +393,16 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.lbl_summary_state)
         self.lbl_base_stats = QLabel()
         self.lbl_rules_stats = QLabel()
+        self.lbl_hashes = QLabel()
+        self.lbl_meta = QLabel()
         self.lbl_base_stats.setWordWrap(True)
         self.lbl_rules_stats.setWordWrap(True)
+        self.lbl_hashes.setWordWrap(True)
+        self.lbl_meta.setWordWrap(True)
         lay.addWidget(self.lbl_base_stats)
         lay.addWidget(self.lbl_rules_stats)
+        lay.addWidget(self.lbl_hashes)
+        lay.addWidget(self.lbl_meta)
         lay.addStretch(1)
         self.tabs.addTab(tab, "")
 
@@ -491,6 +513,8 @@ class MainWindow(QMainWindow):
         self.btn_validate.setText(t("btn.validate"))
         self.btn_process.setText(t("btn.process"))
         self.btn_cancel.setText(t("btn.cancel"))
+        self.chk_redact_log.setText(t("opt.redact_log"))
+        self.chk_write_meta.setText(t("opt.write_meta"))
         self.btn_open_outdir.setText(t("btn.open_output"))
         self.btn_open_log.setText(t("btn.open_log"))
         self.warn_search.setPlaceholderText(t("search.placeholder"))
@@ -527,6 +551,8 @@ class MainWindow(QMainWindow):
         self.btn_cancel.setToolTip(t("tt.cancel"))
         self.btn_open_outdir.setToolTip(t("tt.open_output"))
         self.btn_open_log.setToolTip(t("tt.open_log"))
+        self.chk_redact_log.setToolTip(t("tt.redact_log"))
+        self.chk_write_meta.setToolTip(t("tt.write_meta"))
 
     def _set_summary_defaults(self):
         self.lbl_adds.setText(t("summary.adds", n=0))
@@ -538,6 +564,8 @@ class MainWindow(QMainWindow):
         self.lbl_summary_state.setText(t("summary.state.idle"))
         self.lbl_base_stats.setText(t("summary.base", enc="-", lines=0, roles=0, c1=0, c2=0))
         self.lbl_rules_stats.setText(t("summary.rules", delim="-", rules=0, roles=0, tables="-"))
+        self.lbl_hashes.clear()
+        self.lbl_meta.clear()
 
     def _filter_warns(self, text):
         self.warn_proxy.setFilterRegularExpression(QRegularExpression(text, QRegularExpression.CaseInsensitiveOption))
@@ -551,6 +579,9 @@ class MainWindow(QMainWindow):
             return
         self.base_path = path
         self.base_edit.setText(path)
+        self.current_outfile = ""
+        self.current_log_path = ""
+        self.current_meta_path = ""
         if not self.outdir_path:
             self.outdir_path = os.path.dirname(path)
             self.out_edit.setText(self.outdir_path)
@@ -563,6 +594,9 @@ class MainWindow(QMainWindow):
             return
         self.rules_path = path
         self.rules_edit.setText(path)
+        self.current_outfile = ""
+        self.current_log_path = ""
+        self.current_meta_path = ""
         self.last_result = None
         self.last_result_has_validation_errors = False
         self._analyze_rules()
@@ -579,6 +613,12 @@ class MainWindow(QMainWindow):
 
     def _analyze_base(self):
         try:
+            resolve_regular_file(
+                self.base_path,
+                label=t("sec.label.base"),
+                max_size_mb=DEFAULT_LIMITS["base_size_mb"],
+                max_lines=DEFAULT_LIMITS["base_lines"],
+            )
             lines, enc = read_text(self.base_path)
             entries = build_entries(lines)
             roles = set()
@@ -606,6 +646,12 @@ class MainWindow(QMainWindow):
 
     def _analyze_rules(self):
         try:
+            resolve_regular_file(
+                self.rules_path,
+                label=t("sec.label.rules"),
+                max_size_mb=DEFAULT_LIMITS["rules_size_mb"],
+                max_lines=DEFAULT_LIMITS["rules_lines"],
+            )
             _, meta = parse_rules(self.rules_path, return_meta=True)
             rs = meta.get("rules_stats", {})
             val_errs = int(rs.get("validation_errors", 0))
@@ -641,12 +687,16 @@ class MainWindow(QMainWindow):
             self.out_detail.setText(t("detail.output_hint"))
             self.out_indicator.setText("⚠")
             return
-        out_file, log_file = build_output_paths(self.base_path, self.outdir_path)
-        self.out_detail.setText(
-            t("detail.output_expected", outfile=os.path.basename(out_file), logfile=os.path.basename(log_file))
-        )
-        writable = os.path.isdir(self.outdir_path) and os.access(self.outdir_path, os.W_OK)
-        self.out_indicator.setText("✅" if writable else "⚠")
+        try:
+            resolve_output_dir(self.outdir_path, label=t("sec.label.output"))
+            out_file, log_file = build_output_paths(self.base_path, self.outdir_path)
+            self.out_detail.setText(
+                t("detail.output_expected", outfile=os.path.basename(out_file), logfile=os.path.basename(log_file))
+            )
+            self.out_indicator.setText("✅")
+        except CodedError as ce:
+            self.out_detail.setText(f"{ce.code}: {ce.message}")
+            self.out_indicator.setText("⚠")
 
     def _refresh_guardrails(self):
         self._refresh_output_details()
@@ -702,6 +752,33 @@ class MainWindow(QMainWindow):
             yes_btn.setText(t("dialog.continue"))
         return box.exec() == QMessageBox.Yes
 
+    def _confirm_network_paths(self):
+        paths = [self.base_path, self.rules_path, self.outdir_path]
+        if not any(path and is_unc_path(path) for path in paths):
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(t("dialog.netpath_title"))
+        box.setText(t("dialog.netpath_text"))
+        box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Yes)
+        box.setDefaultButton(QMessageBox.Cancel)
+        cancel_btn = box.button(QMessageBox.Cancel)
+        yes_btn = box.button(QMessageBox.Yes)
+        if cancel_btn:
+            cancel_btn.setText(t("dialog.cancel"))
+        if yes_btn:
+            yes_btn.setText(t("dialog.continue"))
+        return box.exec() == QMessageBox.Yes
+
+    def _show_error_dialog(self, message, details=""):
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Critical)
+        box.setWindowTitle(t("dialog.error_title"))
+        box.setText(message)
+        if details:
+            box.setDetailedText(details)
+        box.exec()
+
     def _start_job(self, preview):
         if self._thread is not None:
             return
@@ -717,6 +794,8 @@ class MainWindow(QMainWindow):
             return
         if not preview and not self._can_process():
             QMessageBox.warning(self, t("dialog.process_title"), t("dialog.process_pick"))
+            return
+        if not preview and not self._confirm_network_paths():
             return
         if not preview and not self._confirm_warns_before_process():
             return
@@ -735,6 +814,8 @@ class MainWindow(QMainWindow):
             outdir=self.outdir_path if not preview else None,
             preview=preview,
             ui_sample_limit=300,
+            redact_log=self.chk_redact_log.isChecked(),
+            write_meta=self.chk_write_meta.isChecked(),
         )
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
@@ -755,6 +836,8 @@ class MainWindow(QMainWindow):
             button.setEnabled(enabled)
         self.cmb_language.setEnabled(enabled)
         self.toggle_dark.setEnabled(enabled)
+        self.chk_redact_log.setEnabled(enabled)
+        self.chk_write_meta.setEnabled(enabled)
         self.btn_validate.setEnabled(enabled and self._can_validate())
         self.btn_process.setEnabled(enabled and self._can_process())
 
@@ -769,7 +852,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText(message)
 
     def _on_worker_failed(self, error, tb):
-        QMessageBox.critical(self, t("dialog.error_title"), f"{error}\n\n{tb}")
+        self._show_error_dialog(error, tb)
 
     def _translate_warns(self, warns_struct):
         out = []
@@ -837,7 +920,7 @@ class MainWindow(QMainWindow):
             self.lbl_summary_state.setText(t("summary.state.error", msg=msg))
             self.status_label.setText(t("status.error"))
             if not self._suppress_result_dialog:
-                QMessageBox.critical(self, t("dialog.error_title"), msg)
+                self._show_error_dialog(msg, getattr(err, "details", ""))
         else:
             if errors_count > 0:
                 self.lbl_summary_state.setText(t("summary.state.invalid_rules"))
@@ -848,7 +931,24 @@ class MainWindow(QMainWindow):
             if not self._running_preview:
                 self.current_outfile = result.get("outfile", "")
                 self.current_log_path = result.get("log_path", "")
+                self.current_meta_path = result.get("meta_path", "")
             self.status_label.setText(t("status.finished"))
+
+        checksums = result.get("checksums", {}) or {}
+        if checksums:
+            self.lbl_hashes.setText(
+                t(
+                    "summary.hashes",
+                    base=checksums.get("base_sha256", "")[:12],
+                    rules=checksums.get("rules_sha256", "")[:12],
+                )
+            )
+        else:
+            self.lbl_hashes.clear()
+        if result.get("meta_path"):
+            self.lbl_meta.setText(t("summary.meta", meta=Path(result["meta_path"]).name))
+        else:
+            self.lbl_meta.clear()
 
         self.btn_open_outdir.setEnabled(bool(self.current_outfile))
         self.btn_open_log.setEnabled(bool(self.current_log_path))

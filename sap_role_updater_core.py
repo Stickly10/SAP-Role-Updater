@@ -11,12 +11,21 @@
 #   python SAP-Role-Updater.py --in EXPORT.txt --rules RULES.csv --outdir ./salida
 
 import csv
+import json
 import os
 import re
+from datetime import datetime, timezone
 from collections import defaultdict
 from typing import Callable
 from error_handler import CodedError, raise_error
 from i18n import t
+from security_utils import (
+    DEFAULT_LIMITS,
+    resolve_output_dir,
+    resolve_regular_file,
+    safe_output_path,
+    sha256_file,
+)
 from version import APP_VERSION
 
 __version__ = APP_VERSION
@@ -191,6 +200,12 @@ def build_output_paths(infile, outdir):
     return outfile, log_path
 
 
+def build_meta_path(infile, outdir):
+    base = os.path.basename(infile)
+    name, _ = os.path.splitext(base)
+    return os.path.join(outdir, f"{name}_MOD_META.json")
+
+
 def _empty_result(status="ok"):
     return {
         "status": status,
@@ -205,6 +220,10 @@ def _empty_result(status="ok"):
         "delimiter_detected": "",
         "base_stats": {},
         "rules_stats": {},
+        "checksums": {},
+        "meta_path": "",
+        "path_warnings": [],
+        "privacy_mode": False,
     }
 
 
@@ -232,6 +251,59 @@ def _build_base_stats(lines, entries):
     }
 
 
+def _redact_token(token: str) -> str:
+    clean = (token or "").strip()
+    if not clean:
+        return ""
+    if len(clean) <= 3:
+        return "*" * len(clean)
+    return clean[:3] + "***"
+
+
+def _redact_line(line: str) -> str:
+    entry_1251 = parse_entry_1251(line)
+    if entry_1251:
+        return compose_line_1251(
+            entry_1251,
+            entry_1251["counter"],
+            entry_1251["field"].strip(),
+            _redact_token(entry_1251["low"]),
+            _redact_token(entry_1251["high"]),
+        )
+    entry_1252 = parse_entry_1252(line)
+    if entry_1252:
+        return compose_line_1252(
+            entry_1252,
+            entry_1252["counter"],
+            entry_1252["varbl"].strip(),
+            _redact_token(entry_1252["low"]),
+            _redact_token(entry_1252["high"]),
+        )
+    return line
+
+
+def _build_metadata_payload(res, *, infile_name, rules_name, outfile_name, log_name):
+    return {
+        "app_version": APP_VERSION,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "privacy_mode": bool(res.get("privacy_mode")),
+        "checksums": res.get("checksums", {}),
+        "inputs": {
+            "base_file": infile_name,
+            "rules_file": rules_name,
+        },
+        "outputs": {
+            "mod_file": outfile_name,
+            "log_file": log_name,
+        },
+        "counters": res.get("counters", {}),
+        "encoding_detected": res.get("encoding_detected", ""),
+        "delimiter_detected": res.get("delimiter_detected", ""),
+        "base_stats": res.get("base_stats", {}),
+        "rules_stats": res.get("rules_stats", {}),
+    }
+
+
 def run_job_ex(
     infile: str,
     rules_path: str,
@@ -242,15 +314,27 @@ def run_job_ex(
     ui_sample_limit: int = 300,
     progress_cb: Callable[[int, int, str], None] | None = None,
     is_cancelled: Callable[[], bool] | None = None,
+    redact_log: bool = False,
+    write_meta: bool = False,
+    max_base_file_size_mb: int = DEFAULT_LIMITS["base_size_mb"],
+    max_rules_file_size_mb: int = DEFAULT_LIMITS["rules_size_mb"],
+    max_base_lines: int = DEFAULT_LIMITS["base_lines"],
+    max_rules_lines: int = DEFAULT_LIMITS["rules_lines"],
 ) -> dict:
     del verbose  # reserved for future hooks; legacy signature compatibility.
     res = _empty_result(status="ok")
+    res["privacy_mode"] = bool(redact_log)
     log_fh = None
     log_writer = None
     temp_log_path = ""
     temp_out_path = ""
+    temp_meta_path = ""
     final_out_path = ""
     final_log_path = ""
+    final_meta_path = ""
+    infile_info = {}
+    rules_info = {}
+    outdir_info = {}
 
     def progress(current, total, message):
         if progress_cb:
@@ -260,7 +344,9 @@ def run_job_ex(
         return (val or "").replace("\r", " ").replace("\n", " ")
 
     def log_emit(action, before, after):
-        row = [action, clean_text(before), clean_text(after)]
+        safe_before = _redact_line(before) if redact_log and before else before
+        safe_after = _redact_line(after) if redact_log and after else after
+        row = [action, clean_text(safe_before), clean_text(safe_after)]
         if len(res["sample_rows"]) < ui_sample_limit:
             res["sample_rows"].append(row)
         if log_writer:
@@ -287,6 +373,56 @@ def run_job_ex(
     try:
         if not preview and not outdir:
             raise_error("VAL-004", "SEV2", t("val.outdir_required"), origin="run_job_ex", err_type="Validation")
+
+        progress(0, 6, t("progress.validate_paths"))
+        infile_info = resolve_regular_file(
+            infile,
+            label=t("sec.label.base"),
+            max_size_mb=max_base_file_size_mb,
+            max_lines=max_base_lines,
+        )
+        rules_info = resolve_regular_file(
+            rules_path,
+            label=t("sec.label.rules"),
+            max_size_mb=max_rules_file_size_mb,
+            max_lines=max_rules_lines,
+        )
+        infile = str(infile_info["path"])
+        rules_path = str(rules_info["path"])
+        if not preview:
+            outdir_info = resolve_output_dir(outdir, label=t("sec.label.output"))
+            outdir = str(outdir_info["path"])
+
+        for path_info, label_key in (
+            (infile_info, "sec.label.base"),
+            (rules_info, "sec.label.rules"),
+            (outdir_info, "sec.label.output"),
+        ):
+            if path_info and path_info.get("is_unc"):
+                warn_emit(
+                    "WARN-NETPATH",
+                    "",
+                    severity="SEV3",
+                    legacy=True,
+                    msg_id="sec.warn_unc_path",
+                    msg_params={"label": t(label_key), "name": path_info.get("name", "")},
+                )
+                res["counters"]["warns"] += 1
+                res["path_warnings"].append(
+                    {
+                        "code": "WARN-NETPATH",
+                        "label": t(label_key),
+                        "name": path_info.get("name", ""),
+                    }
+                )
+                log_emit("WARN-NETPATH", t("sec.warn_unc_path", label=t(label_key), name=path_info.get("name", "")), "")
+
+        if write_meta:
+            progress(0, 6, t("progress.hash_inputs"))
+            res["checksums"] = {
+                "base_sha256": sha256_file(infile),
+                "rules_sha256": sha256_file(rules_path),
+            }
 
         progress(0, 5, t("progress.read_base"))
         lines, enc = read_text(infile)
@@ -328,8 +464,16 @@ def run_job_ex(
 
         if not preview:
             final_out_path, final_log_path = build_output_paths(infile, outdir)
+            final_meta_path = build_meta_path(infile, outdir) if write_meta else ""
+            final_out_path = str(safe_output_path(outdir, os.path.basename(final_out_path), label=t("sec.label.mod")))
+            final_log_path = str(safe_output_path(outdir, os.path.basename(final_log_path), label=t("sec.label.log")))
+            if final_meta_path:
+                final_meta_path = str(
+                    safe_output_path(outdir, os.path.basename(final_meta_path), label=t("sec.label.meta"))
+                )
             temp_out_path = final_out_path + ".tmp"
             temp_log_path = final_log_path + ".tmp"
+            temp_meta_path = final_meta_path + ".tmp" if final_meta_path else ""
             log_fh = open(temp_log_path, "w", encoding="utf-8", newline="")
             log_writer = csv.writer(log_fh, delimiter="\t")
             log_writer.writerow([t("log.header.action"), t("log.header.before"), t("log.header.after")])
@@ -398,10 +542,24 @@ def run_job_ex(
                 log_fh.flush()
                 log_fh.close()
                 log_fh = None
+            if final_meta_path:
+                meta_payload = _build_metadata_payload(
+                    res,
+                    infile_name=infile_info.get("name", os.path.basename(infile)),
+                    rules_name=rules_info.get("name", os.path.basename(rules_path)),
+                    outfile_name=os.path.basename(final_out_path),
+                    log_name=os.path.basename(final_log_path),
+                )
+                with open(temp_meta_path, "w", encoding="utf-8", newline="\n") as meta_fh:
+                    json.dump(meta_payload, meta_fh, ensure_ascii=False, indent=2)
+                    meta_fh.write("\n")
             os.replace(temp_out_path, final_out_path)
             os.replace(temp_log_path, final_log_path)
+            if final_meta_path:
+                os.replace(temp_meta_path, final_meta_path)
             res["outfile"] = final_out_path
             res["log_path"] = final_log_path
+            res["meta_path"] = final_meta_path
 
         progress(total_rules, total_rules, t("progress.done"))
         return res
@@ -425,7 +583,7 @@ def run_job_ex(
         if log_fh:
             log_fh.close()
         if res["status"] != "ok":
-            for p in (temp_out_path, temp_log_path):
+            for p in (temp_out_path, temp_log_path, temp_meta_path):
                 if p and os.path.exists(p):
                     try:
                         os.remove(p)
@@ -433,13 +591,24 @@ def run_job_ex(
                         pass
 
 
-def run_job(infile, rules_path, outdir=None, verbose=False, preview=False):
+def run_job(
+    infile,
+    rules_path,
+    outdir=None,
+    verbose=False,
+    preview=False,
+    *,
+    redact_log=False,
+    write_meta=False,
+):
     res = run_job_ex(
         infile=infile,
         rules_path=rules_path,
         outdir=outdir,
         preview=preview,
         verbose=verbose,
+        redact_log=redact_log,
+        write_meta=write_meta,
     )
     if res["status"] == "cancelled":
         raise_error("USR-001", "SEV3", t("user.cancelled"), origin="run_job", err_type="User")

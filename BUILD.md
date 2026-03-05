@@ -1,35 +1,48 @@
 # Build Windows EXE (PySide6)
 
-## 1) Install dependencies
+## 1) Upgrade pip and install dependencies
 
 ```bash
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-## 2) Clean previous artifacts
+## 2) Optional dependency audit
 
 ```bash
-# PowerShell
+python -m pip install pip-audit
+pip-audit
+```
+
+## 3) Clean previous artifacts
+
+```powershell
 if (Test-Path build) { Remove-Item -Recurse -Force build }
 if (Test-Path dist) { Remove-Item -Recurse -Force dist }
 ```
 
-## 3) Build one-file executable (clean)
+## 4) Reproducible clean build
 
 ```bash
 pyinstaller --clean SAP-Role-Updater.spec
 ```
 
-## 4) If Qt plugins are missing at runtime
+## 5) If Qt plugins are missing at runtime
 
 ```bash
 pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" --collect-all PySide6 main.py
 ```
 
-## Basic troubleshooting
+## 6) Optional local security checks
 
-- Ensure you are building with the same Python where `PySide6` is installed.
-- Delete previous `build/` and `dist/` outputs before rebuilding if artifacts look stale.
-- Building from `SAP-Role-Updater.spec` incluye archivos `locales/*.json` y `templates/RULES_template.csv` en el `.exe`.
-- If SmartScreen warns, verify hash and source before execution.
-- If GUI does not start but CLI works, rebuild with `--collect-all PySide6`.
+```powershell
+.\security_checks.ps1
+```
+
+## Notes
+
+- Build with the same Python interpreter where `PySide6` is installed.
+- Do not package secrets, tokens, personal paths, or temporary outputs.
+- The EXE writes outputs only to the folder selected by the user.
+- Prefer a user-writable folder. Avoid `Program Files` and other privileged locations.
+- `SAP-Role-Updater.spec` includes `locales/*.json` and `templates/RULES_template.csv`.

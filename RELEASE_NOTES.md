@@ -1,23 +1,25 @@
-# SAP Role Updater v1.3.9
+# SAP Role Updater v1.3.10
 
 ## Added
 
-- Theme toggle (dark/light) with persistence.
-- Language selector (ES/EN) with JSON locale files in `locales/`.
-- i18n pipeline for GUI text and structured warning messages (`msg_id`, `msg_params`).
-- Consultant-oriented README in Spanish.
-- Rules template for releases: `templates/RULES_template.csv`.
+- Security hardening for path validation, file size limits, and line count limits.
+- Optional privacy mode for logs (`--redact-log` / `Log privado`).
+- Optional local metadata file with SHA-256 checksums (`--write-meta` / `Meta SHA-256`).
+- `SECURITY.md`, `SECURITY_CHECKLIST.md`, and `security_checks.ps1`.
 
 ## Improved
 
-- UI icons for file/folder actions now use Qt standard icons.
-- Version centralized in `version.py`.
-- CLI now supports `--lang` for translated output.
-- Strict validation warnings remain blocking for process (SEV1/SEV2).
+- Atomic writes for `_MOD`, `_MOD_LOG.txt`, and optional `_MOD_META.json`.
+- Cleaner CLI error handling with optional `--debug`.
+- GUI error dialogs now hide technical details by default and expose them only on demand.
+- README and build instructions updated for secure usage and reproducible builds.
+- Dependencies pinned in `requirements.txt`.
 
 ## Compatibility Notes
 
 - Core replacement algorithm is unchanged.
-- Output files remain:
+- Standard outputs remain:
   - `<base>_MOD`
   - `<base>_MOD_LOG.txt`
+- Optional extra output:
+  - `<base>_MOD_META.json`

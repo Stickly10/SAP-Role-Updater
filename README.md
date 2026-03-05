@@ -1,4 +1,4 @@
-# SAP Role Updater v1.3.9
+# SAP Role Updater v1.3.10
 
 Herramienta de escritorio para preparar cambios masivos de roles SAP antes de cargarlos en PFCG.
 
@@ -6,6 +6,7 @@ Toma un archivo base exportado desde Mass Download y un `RULES.csv`, valida regl
 
 - Archivo modificado (`_MOD`)
 - Log tabulado (`_MOD_LOG.txt`)
+- Metadata local opcional (`_MOD_META.json`)
 
 No altera tablas no objetivo y mantiene la logica de reemplazo existente.
 
@@ -21,17 +22,15 @@ No altera tablas no objetivo y mantiene la logica de reemplazo existente.
 2. Guarda el archivo base (puede venir sin extension o como `.sap`).
 3. Prepara `RULES.csv` usando `templates/RULES_template.csv`.
 4. Abre `SAP Role Updater.exe`.
-5. Selecciona:
-   - Base
-   - Reglas
-   - Carpeta de salida
+5. Selecciona Base, Reglas y Carpeta de salida.
 6. Pulsa **Validar**:
-   - Errores (SEV1/SEV2): bloquean **Procesar**
-   - Advertencias (SEV3): permiten continuar, pero deben revisarse
-7. Pulsa **Procesar y generar _MOD**.
+   - Errores `SEV1/SEV2`: bloquean **Procesar**
+   - Advertencias `SEV3`: permiten continuar, pero deben revisarse
+7. Pulsa **Procesar**.
 8. Revisa:
    - `<base>_MOD`
    - `<base>_MOD_LOG.txt`
+   - `<base>_MOD_META.json` si activaste metadata
 9. Carga el `_MOD` en PFCG y prueba primero en QA.
 
 ## Estructura De RULES.csv
@@ -62,49 +61,49 @@ Dependiendo de `TABLE`:
 - `AGR_1251`: `OBJECT` y `AUTH` obligatorios
 - `AGR_1252`: `FIELD` tipo VARBL (ej. `$WERKS`), `OBJECT/AUTH` se ignoran
 
-## Ejemplos Reales
+## Ejemplos
 
-Ejemplo AGR_1251:
+Ejemplo `AGR_1251`:
 
 ```csv
 replace_list,AGR_1251,100,Z:FSBP_CRM_ZSALSPRO_EXT_1004,S_RFC,T-BD08132800,RFC_NAME,0*|A*,9*|Z*
 ```
 
-Ejemplo AGR_1252:
+Ejemplo `AGR_1252`:
 
 ```csv
 replace_list,AGR_1252,100,Z:FSBP_CRM_ZSALSPRO_EXT_1004,,,$WERKS,0*|A*,9*|Z*
 ```
 
-## Errores Comunes
+## Seguridad Y Buenas Practicas
 
-- Faltan columnas en header: revisa encabezados obligatorios.
-- `MANDT` invalido: debe ser exactamente 3 digitos.
-- VARBL sin `$` en `AGR_1252`: ejemplo correcto `$WERKS`.
-- Valores `LOW/HIGH` mayores a 40 caracteres.
-- Rol/campo no existe en base: aparece advertencia de no coincidencia.
+- Valida y prueba en QA antes de cargar en PRD.
+- Si el log puede contener valores sensibles, activa **Log privado** o usa `--redact-log`.
+- No compartas `_MOD_LOG.txt` fuera del equipo si contiene LOW/HIGH sensibles.
+- Si necesitas trazabilidad local, activa **Meta SHA-256** o usa `--write-meta`.
+- Evita procesar desde rutas de red si no controlas permisos e integridad del share.
+- La aplicacion rechaza archivos demasiado grandes, rutas inseguras y salidas fuera de la carpeta elegida.
 
-## Interfaz
-
-- **Idioma**: selector en el header (`Español` / `English`), cambio en caliente.
-- **Tema**: toggle **Modo oscuro** en header, cambio en caliente y persistente.
-- **Tabs de resultado**:
-  - Resumen
-  - Advertencias (con filtro)
-  - Cambios (muestra de cambios)
+Mas detalle tecnico en `SECURITY.md`.
 
 ## Compatibilidad CLI
 
-La CLI se mantiene:
+CLI base:
 
 ```bash
 python main.py --in <base> --rules <rules> --outdir <outdir> --lang es
 ```
 
-Modo preview:
+Preview:
 
 ```bash
 python main.py --in <base> --rules <rules> --preview --lang en
+```
+
+Opciones de seguridad:
+
+```bash
+python main.py --in <base> --rules <rules> --outdir <outdir> --redact-log --write-meta --debug
 ```
 
 ## Notas De Log
@@ -113,3 +112,10 @@ El archivo log se mantiene en formato tabulado estable (`.txt`) para compatibili
 
 - Header: `action`, `before`, `after`
 - Delimitador: tab (`\t`)
+
+## Checks Locales
+
+```powershell
+.\security_checks.ps1
+python smoke_test.py
+```
