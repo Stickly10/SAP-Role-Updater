@@ -14,17 +14,23 @@
     "/\\bT-[A-Z0-9]+\\b/g"
   ],
   "words": [
+    "afters",
     "agr",
     "agrs",
     "auth",
+    "befores",
     "codederror",
     "cp",
+    "dedup",
     "gui",
+    "infile",
     "latin",
+    "logrows",
     "logpath",
     "mandt",
     "mod",
     "neu",
+    "outfile",
     "outdir",
     "sap",
     "sysid",
@@ -32,6 +38,7 @@
     "tcode",
     "txool",
     "varbl",
+    "warns",
     "werks"
   ]
 }

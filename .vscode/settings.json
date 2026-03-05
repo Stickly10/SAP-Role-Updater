@@ -1,0 +1,11 @@
+{
+  "cSpell.configFile": "${workspaceFolder}/cspell.json",
+  "cSpell.enabledLanguageIds": [
+    "markdown",
+    "plaintext",
+    "git-commit",
+    "json",
+    "yaml",
+    "yml"
+  ]
+}
