@@ -28,8 +28,8 @@ else {
 }
 
 if (Get-Command bandit -ErrorAction SilentlyContinue) {
-    Write-Host "[bandit] bandit -r src scripts main.py -x build,dist,tests,smoke_test.py"
-    bandit -r src scripts main.py -x build,dist,tests,smoke_test.py
+    Write-Host "[bandit] bandit -r src scripts main.py -x build,dist,tests,scripts\\smoke_test.py"
+    bandit -r src scripts main.py -x build,dist,tests,scripts\smoke_test.py
 }
 else {
     Write-Host "[bandit] not installed. Install with: python -m pip install bandit"

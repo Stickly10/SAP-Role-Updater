@@ -10,7 +10,7 @@ SEMVER_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"
 )
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 
 
 def parse_version(version: str) -> tuple[int, int, int]:

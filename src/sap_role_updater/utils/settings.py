@@ -8,6 +8,9 @@ from pathlib import Path
 APP_SETTINGS_ORG = "Txool"
 APP_SETTINGS_NAME = "SAPRoleUpdater"
 DISPLAY_NAME = "SAP Role Updater"
+BRANDING_DIR = ("assets", "branding")
+APP_ICON_FILE = "SAP-Role-Updater-Logo.ico"
+APP_ICON_RESOURCE = (*BRANDING_DIR, APP_ICON_FILE)
 
 DEFAULT_LIMITS = {
     "base_size_mb": 300,

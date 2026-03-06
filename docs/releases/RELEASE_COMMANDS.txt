@@ -1,14 +1,14 @@
-﻿python scripts\bump_version.py major
+﻿python scripts\bump_version.py patch
 python -m ruff check .
 python -m pytest
 python scripts\i18n_audit.py
-.\security_checks.ps1
+.\scripts\security_checks.ps1
 .\scripts\build.ps1 -Package
 
 git add .
-git commit -m "release: SAP Role Updater v2.0.0"
+git commit -m "release: SAP Role Updater v2.0.1"
 git push origin master
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.0.1
+git push origin v2.0.1
 
-gh release create v2.0.0 "dist/SAP Role Updater v2.0.0.zip#SAP Role Updater v2.0.0.zip" "templates/RULES_template.xlsx#RULES_template.xlsx" -t "SAP Role Updater v2.0.0" -F docs/releases/RELEASE_NOTES.md
+gh release create v2.0.1 "dist/SAP Role Updater v2.0.1.zip#SAP Role Updater v2.0.1.zip" "templates/RULES_template.xlsx#RULES_template.xlsx" -t "SAP Role Updater v2.0.1" -F docs/releases/RELEASE_NOTES.md

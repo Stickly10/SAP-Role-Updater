@@ -26,5 +26,5 @@
 ## Release Pack
 
 - `dist/SAP Role Updater.exe`
-- `dist/SAP Role Updater v2.0.0.zip`
+- `dist/SAP Role Updater v2.0.1.zip`
 - `templates/RULES_template.xlsx`

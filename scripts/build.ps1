@@ -13,9 +13,10 @@ Get-ChildItem dist -File -Filter "SAP Role Updater v*.zip" -ErrorAction Silently
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python scripts\generate_rules_template.py
+python scripts\generate_app_icon.py
 
 if ($CollectAllQt) {
-    pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" --icon "SAP-Role-Updater-Logo.ico" --add-data "SAP-Role-Updater-Logo.ico;." --add-data "templates\\RULES_template.xlsx;templates" --collect-all PySide6 main.py
+    pyinstaller --noconsole --onefile --clean --name "SAP Role Updater" --icon "assets\\branding\\SAP-Role-Updater-Logo.ico" --add-data "assets\\branding\\SAP-Role-Updater-Logo.ico;assets/branding" --add-data "templates\\RULES_template.xlsx;templates" --collect-all PySide6 main.py
 }
 else {
     pyinstaller --clean SAP-Role-Updater.spec

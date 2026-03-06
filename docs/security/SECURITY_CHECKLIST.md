@@ -8,10 +8,10 @@ python -m pip install -r requirements-dev.txt
 python -m ruff check .
 python -m pytest
 python scripts\i18n_audit.py
-.\security_checks.ps1
+.\scripts\security_checks.ps1
 ```
 
-`security_checks.ps1` audita las dependencias declaradas del proyecto y el código productivo. No usa el entorno completo como fuente de verdad.
+`scripts/security_checks.ps1` audita las dependencias declaradas del proyecto y el código productivo. No usa el entorno completo como fuente de verdad.
 
 ## Review Points
 

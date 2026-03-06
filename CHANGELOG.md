@@ -1,5 +1,23 @@
 ﻿# Changelog
 
+## [2.0.1] - 2026-03-06
+
+### Fixed
+
+- icono del ejecutable regenerado como `.ico` multiresolucion para mejorar su visualizacion en Explorer
+
+### Changed
+
+- branding movido a `assets/branding/`
+- smoke test y checks de seguridad movidos a `scripts/`
+- wrappers raiz innecesarios eliminados para dejar una estructura mas limpia
+
+### Unchanged By Design
+
+- algoritmo funcional de reemplazo
+- formato final del archivo `_MOD`
+- formato funcional del `_MOD_LOG.csv`
+
 ## [2.0.0] - 2026-03-05
 
 ### Added
@@ -10,7 +28,7 @@
 - cobertura por regla con resumen global
 - pestaña `Cobertura` en la GUI con búsqueda y exportación CSV
 - visor diff visual BEFORE/AFTER en la pestaña `Cambios`
-- icono de aplicación y de ejecutable con `SAP-Role-Updater-Logo.ico`
+- icono de aplicación y de ejecutable con `assets/branding/SAP-Role-Updater-Logo.ico`
 - release pack ZIP para preservar el nombre interno `SAP Role Updater.exe`
 
 ### Changed

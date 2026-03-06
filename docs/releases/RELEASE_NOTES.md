@@ -1,22 +1,16 @@
-﻿# Release Notes v2.0.0
+# Release Notes v2.0.1
 
-## Added
+## Fixed
 
-- soporte exclusivo para `RULES.xlsx`
-- template Excel distribuible
-- cobertura por regla
-- diff visual BEFORE/AFTER
-- indexado del base para mejorar performance
-- icono de aplicación y ejecutable
-- release pack ZIP
+- icono del ejecutable regenerado como `.ico` multiresolucion para mejorar su visualizacion en Explorer
 
 ## Changed
 
-- log estándar: `_MOD_LOG.csv` con separador `;`
-- GUI actualizada para trabajar con workbook Excel y cobertura
-- versión mayor por ruptura de compatibilidad con `RULES.csv`
+- branding movido a `assets/branding/`
+- smoke test y checks de seguridad movidos a `scripts/`
+- raiz del proyecto simplificada quitando wrappers que ya no usaba el proyecto
 
 ## Unchanged By Design
 
 - algoritmo funcional del `_MOD`
-- procesamiento local sin telemetría
+- procesamiento local sin telemetria

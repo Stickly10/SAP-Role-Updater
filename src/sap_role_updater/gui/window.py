@@ -58,7 +58,13 @@ from sap_role_updater.gui.models import AnimatedToggle, DictTableModel, JobWorke
 from sap_role_updater.gui.theme import ThemeManager
 from sap_role_updater.utils.error_handler import CodedError
 from sap_role_updater.utils.path_safety import is_unc_path, resolve_output_dir, resolve_regular_file
-from sap_role_updater.utils.settings import APP_SETTINGS_NAME, APP_SETTINGS_ORG, DEFAULT_LIMITS, resource_path
+from sap_role_updater.utils.settings import (
+    APP_ICON_RESOURCE,
+    APP_SETTINGS_NAME,
+    APP_SETTINGS_ORG,
+    DEFAULT_LIMITS,
+    resource_path,
+)
 
 
 class MainWindow(QMainWindow):
@@ -102,7 +108,7 @@ class MainWindow(QMainWindow):
         self._refresh_guardrails()
 
     def _apply_window_icon(self):
-        icon_path = resource_path("SAP-Role-Updater-Logo.ico")
+        icon_path = resource_path(*APP_ICON_RESOURCE)
         if icon_path.exists():
             icon = QIcon(str(icon_path))
             self.setWindowIcon(icon)
@@ -1317,7 +1323,7 @@ def launch_gui(version, lang_code=None):
     owns_app = app is None
     if app is None:
         app = QApplication(sys.argv)
-    icon_path = resource_path("SAP-Role-Updater-Logo.ico")
+    icon_path = resource_path(*APP_ICON_RESOURCE)
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
     win = MainWindow(version, initial_language=lang_code)

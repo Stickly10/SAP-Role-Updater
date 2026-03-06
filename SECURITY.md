@@ -74,4 +74,4 @@ Archivos generados localmente:
 Ver:
 
 - `docs/security/SECURITY_CHECKLIST.md`
-- `security_checks.ps1`
+- `scripts/security_checks.ps1`

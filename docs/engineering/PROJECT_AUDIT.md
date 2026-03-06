@@ -9,7 +9,7 @@ Target: `SAP Role Updater` desktop app (Python + PySide6 + Windows EXE)
 
 - ✅ `src/` package structure created: `src/sap_role_updater/`
 - ✅ Core / GUI / utils separated at package level
-- ✅ Root files kept as compatibility wrappers only
+- ✅ Raíz reducida a entrypoints, configuración y documentación principal
 - ✅ Central settings introduced in `src/sap_role_updater/utils/settings.py`
 - ✅ Constants extracted to `src/sap_role_updater/core/constants.py`
 - ⚠ Core logic is still concentrated in `src/sap_role_updater/core/processor.py`; deeper split is P1, not P0
@@ -58,7 +58,7 @@ Evidence:
 - [processor.py](../../src/sap_role_updater/core/processor.py)
 - [SECURITY.md](../../SECURITY.md)
 - [SECURITY_CHECKLIST.md](../security/SECURITY_CHECKLIST.md)
-- [security_checks.ps1](../../security_checks.ps1)
+- [security_checks.ps1](../../scripts/security_checks.ps1)
 
 ## 4. Arquitectura Y Escalabilidad
 

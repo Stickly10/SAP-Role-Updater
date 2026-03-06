@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not $Version) {
-    $Version = python -c "from version import APP_VERSION; print(APP_VERSION)"
+    $Version = python -c "from _bootstrap import ensure_src_on_path; ensure_src_on_path(); from sap_role_updater.version import APP_VERSION; print(APP_VERSION)"
 }
 
 $distDir = Join-Path $PSScriptRoot "..\dist"

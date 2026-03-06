@@ -1,4 +1,4 @@
-﻿# SAP Role Updater v2.0.0
+﻿# SAP Role Updater v2.0.1
 
 Herramienta de escritorio para preparar cambios masivos de roles SAP antes de cargarlos en PFCG.
 
@@ -13,15 +13,32 @@ Y genera localmente:
 - `<base>_MOD_LOG.csv`
 - opcional `<base>_MOD_META.json`
 
-El algoritmo funcional del MOD no cambia. Las mejoras de esta versión están en validación, performance, cobertura, diff visual, UX y empaquetado.
+El algoritmo funcional del MOD no cambia. Las mejoras de esta linea estan en validacion, performance, cobertura, diff visual, UX, empaquetado y organizacion del proyecto.
 
-## Qué Cambió En La v2.0.0
+## Que Cambio En La v2.0.1
+
+- Se regenero el icono como `.ico` multiresolucion para mejorar su visualizacion en Explorer.
+- Los assets visuales se movieron a `assets/branding/`.
+- Los checks y smoke tests se consolidaron en `scripts/`.
+- Se retiraron wrappers raiz que ya no eran necesarios.
+
+## Que Cambio En La v2.0.0
 
 - `RULES.csv` se reemplazó por `RULES.xlsx` de forma exclusiva.
 - El log vuelve a ser `CSV` real con separador `;` para compatibilidad con Excel regional.
 - Se agregó indexado del archivo base para acelerar búsquedas por regla.
 - Se agregó reporte de cobertura por regla y visor diff visual en la GUI.
 - El release se distribuye en `ZIP` para preservar el nombre interno `SAP Role Updater.exe`.
+
+## Estructura Del Proyecto
+
+- `src/sap_role_updater/`: código mantenido y soportado
+- `scripts/`: build, release, smoke tests y checks locales
+- `assets/branding/`: icono e imagen fuente del programa
+- `templates/`: template oficial `RULES_template.xlsx`
+- `docs/`: documentación secundaria
+- `tests/`: pruebas automáticas
+- raíz: entrypoints, configuración y documentación principal
 
 ## Requisitos
 

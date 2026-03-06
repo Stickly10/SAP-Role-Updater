@@ -4,11 +4,21 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
+from pathlib import Path
 
 from openpyxl import Workbook
 
-from sap_role_updater_core import run_job_ex
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from _bootstrap import ensure_src_on_path
+
+ensure_src_on_path()
+
+from sap_role_updater.core.processor import run_job_ex
 
 HEADERS = ["ACTION", "TABLE", "MANDT", "AGR_NAME", "OBJECT", "AUTH", "FIELD", "LOW", "HIGH"]
 

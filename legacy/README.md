@@ -2,6 +2,7 @@
 
 Este directorio documenta compatibilidad hacia atras.
 
-- Los wrappers en la raiz (`main.py`, `sap_role_updater_core.py`, `gui_pyside6.py`, etc.) existen para no romper scripts antiguos ni el entrypoint de PyInstaller.
+- En la raiz solo se conservan los entrypoints visibles (`main.py` y `SAP-Role-Updater.py`).
+- Los wrappers auxiliares antiguos fueron retirados para mantener la raiz limpia.
 - La GUI Tkinter anterior ya no forma parte del flujo activo del proyecto.
 - El codigo mantenido y soportado vive en `src/sap_role_updater/`.

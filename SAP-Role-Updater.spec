@@ -8,7 +8,7 @@ a = Analysis(
     datas=[
         ('locales\\*.json', 'locales'),
         ('templates\\RULES_template.xlsx', 'templates'),
-        ('SAP-Role-Updater-Logo.ico', '.'),
+        ('assets\\branding\\SAP-Role-Updater-Logo.ico', 'assets/branding'),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -40,5 +40,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version='version_info.txt',
-    icon='SAP-Role-Updater-Logo.ico',
+    icon='assets\\branding\\SAP-Role-Updater-Logo.ico',
 )
